@@ -26,6 +26,8 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
+VERSION = "1.0.1"
+
 SELECTION_COLOR = "#39FF14"
 
 DEFAULT_THRESHOLD = 0.995
@@ -705,7 +707,7 @@ class FreezeDetectorApp:
         hotkeys: HotkeyListener,
     ):
         self.root = root
-        self.root.title("Screen Freeze Detector")
+        self.root.title(f"Screen Freeze Detector v{VERSION}")
         self.root.geometry("540x660")
         self.root.minsize(440, 460)
 
