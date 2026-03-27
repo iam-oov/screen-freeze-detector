@@ -2,6 +2,8 @@
 
 Monitors specific screen zones and plays an alert sound when any zone freezes (consecutive frames are nearly identical). Designed for detecting not moving screen areas.
 
+![Screen Freeze Detector](screenshots/app.png)
+
 ## Features
 
 - Draw N rectangular zones on a screenshot overlay
