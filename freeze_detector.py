@@ -26,7 +26,7 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 SELECTION_COLOR = "#39FF14"
 
@@ -299,6 +299,29 @@ def pil_to_tk(image: Image.Image) -> tk.PhotoImage:
     buf = io.BytesIO()
     image.save(buf, format="PPM")
     return tk.PhotoImage(data=buf.getvalue())
+
+
+def generate_app_icon() -> Image.Image:
+    """Generate a 64x64 app icon using the theme palette."""
+    from PIL import ImageDraw, ImageFont
+
+    size = 64
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Outer circle
+    draw.ellipse([2, 2, size - 3, size - 3], fill=BG_CARD, outline=ACCENT, width=3)
+    # Inner circle
+    draw.ellipse([10, 10, size - 11, size - 11], fill=BORDER)
+
+    # "S" letter
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
+    except OSError:
+        font = ImageFont.load_default()
+    draw.text((size // 2, size // 2), "S", fill=GREEN, font=font, anchor="mm")
+
+    return img
 
 
 def setup_theme(root: tk.Tk) -> None:
@@ -710,6 +733,9 @@ class FreezeDetectorApp:
         self.root.title(f"Screen Freeze Detector v{VERSION}")
         self.root.geometry("540x660")
         self.root.minsize(440, 460)
+
+        self._icon = pil_to_tk(generate_app_icon())
+        self.root.iconphoto(True, self._icon)
 
         self._capturer = capturer
         self._sound = sound

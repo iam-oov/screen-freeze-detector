@@ -1,6 +1,6 @@
 # Screen Freeze Detector
 
-Monitors specific screen zones and plays an alert sound when any zone freezes (consecutive frames are nearly identical). Designed for detecting paused or buffering YouTube videos.
+Monitors specific screen zones and plays an alert sound when any zone freezes (consecutive frames are nearly identical). Designed for detecting not moving screen areas.
 
 ## Features
 
@@ -56,14 +56,14 @@ sudo apt remove screensound
 
 All defaults are constants at the top of `freeze_detector.py`:
 
-| Constant | Default | Description |
-|---|---|---|
-| `DEFAULT_THRESHOLD` | `0.995` | Similarity threshold to consider a zone frozen |
-| `DEFAULT_INTERVAL_MS` | `5000` | Milliseconds between each check |
-| `DEFAULT_CONSECUTIVE_FRAMES` | `4` | Consecutive frozen frames before alerting |
-| `ALERT_FREQUENCY` | `880` | Alert beep frequency in Hz |
-| `ALERT_BEEPS` | `2` | Number of beeps per alert |
-| `ALERT_COOLDOWN` | `5.0` | Seconds between repeated alerts |
+| Constant                     | Default | Description                                    |
+| ---------------------------- | ------- | ---------------------------------------------- |
+| `DEFAULT_THRESHOLD`          | `0.995` | Similarity threshold to consider a zone frozen |
+| `DEFAULT_INTERVAL_MS`        | `5000`  | Milliseconds between each check                |
+| `DEFAULT_CONSECUTIVE_FRAMES` | `4`     | Consecutive frozen frames before alerting      |
+| `ALERT_FREQUENCY`            | `880`   | Alert beep frequency in Hz                     |
+| `ALERT_BEEPS`                | `2`     | Number of beeps per alert                      |
+| `ALERT_COOLDOWN`             | `5.0`   | Seconds between repeated alerts                |
 
 ## Architecture
 
