@@ -26,7 +26,7 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 SELECTION_COLOR = "#39FF14"
 
@@ -51,19 +51,20 @@ ZONE_COLORS = [
     "#88FF44",
 ]
 
-# Theme
-BG = "#1a0d0d"
-BG_SURFACE = "#260101"
-BG_CARD = "#25403B"
-BG_INPUT = "#2C736C"
-FG = "#d4f0ed"
-FG_DIM = "#6b9e99"
+# Theme — dark navy + orange accent (inspired by modern agency landing pages)
+BG = "#141422"
+BG_SURFACE = "#1c1c30"
+BG_CARD = "#1e1e34"
+BG_INPUT = "#2a2a44"
+FG = "#e8e8f0"
+FG_DIM = "#6a6a80"
 FG_BRIGHT = "#ffffff"
-ACCENT = "#36BFB1"
-GREEN = "#94F2E9"
-RED = "#ff6b6b"
-YELLOW = "#f9e2af"
-BORDER = "#2C736C"
+ACCENT = "#e8651a"
+ACCENT_HOVER = "#cc5510"
+GREEN = "#4ade80"
+RED = "#ef4444"
+YELLOW = "#eab308"
+BORDER = "#2e2e48"
 FONT = "sans-serif"
 
 
@@ -309,17 +310,15 @@ def generate_app_icon() -> Image.Image:
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Outer circle
-    draw.ellipse([2, 2, size - 3, size - 3], fill=BG_CARD, outline=ACCENT, width=3)
-    # Inner circle
-    draw.ellipse([10, 10, size - 11, size - 11], fill=BORDER)
+    draw.ellipse([2, 2, size - 3, size - 3], fill=ACCENT, outline=ACCENT_HOVER, width=2)
 
-    # "S" letter
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32
+        )
     except OSError:
         font = ImageFont.load_default()
-    draw.text((size // 2, size // 2), "S", fill=GREEN, font=font, anchor="mm")
+    draw.text((size // 2, size // 2), "S", fill="#ffffff", font=font, anchor="mm")
 
     return img
 
@@ -336,52 +335,68 @@ def setup_theme(root: tk.Tk) -> None:
     style = ttk.Style(root)
     style.theme_use("clam")
 
+    # Base
     style.configure(".", background=BG, foreground=FG, font=(FONT, 10))
     style.configure("TFrame", background=BG)
     style.configure("TLabel", background=BG, foreground=FG, font=(FONT, 10))
-    style.configure("TLabelframe", background=BG, foreground=ACCENT, font=(FONT, 10))
-    style.configure(
-        "TLabelframe.Label", background=BG, foreground=ACCENT, font=(FONT, 10, "bold")
-    )
-    style.configure("TCheckbutton", background=BG, foreground=FG)
-    style.map("TCheckbutton", background=[("active", BG_SURFACE)])
 
+    # Section headers — orange label, thin separator feel
     style.configure(
-        "Accent.TButton",
+        "TLabelframe",
+        background=BG,
+        foreground=FG_DIM,
+        bordercolor=BORDER,
+        lightcolor=BORDER,
+        darkcolor=BORDER,
+    )
+    style.configure(
+        "TLabelframe.Label", background=BG, foreground=ACCENT, font=(FONT, 9)
+    )
+
+    style.configure("TCheckbutton", background=BG, foreground=FG_DIM)
+    style.map(
+        "TCheckbutton", background=[("active", BG_SURFACE)], foreground=[("active", FG)]
+    )
+
+    # Buttons — outlined style: dark bg, orange border, white uppercase text
+    style.configure(
+        "TButton",
+        background=BG_SURFACE,
+        foreground=FG,
+        font=(FONT, 9),
+        padding=(16, 7),
+        bordercolor=FG_DIM,
+        lightcolor=FG_DIM,
+        darkcolor=FG_DIM,
+        borderwidth=1,
+    )
+    style.map(
+        "TButton",
+        background=[("active", BG_INPUT), ("disabled", BG)],
+        foreground=[("active", FG_BRIGHT), ("disabled", FG_DIM)],
+        bordercolor=[("active", ACCENT)],
+        lightcolor=[("active", ACCENT)],
+        darkcolor=[("active", ACCENT)],
+    )
+
+    # Active toggle — orange filled
+    style.configure(
+        "Active.TButton",
         background=ACCENT,
-        foreground="#11111b",
-        font=(FONT, 10, "bold"),
-        padding=(16, 6),
+        foreground="#0a0a0a",
+        font=(FONT, 9, "bold"),
+        padding=(16, 7),
+        bordercolor=ACCENT,
+        lightcolor=ACCENT,
+        darkcolor=ACCENT,
     )
     style.map(
-        "Accent.TButton", background=[("active", "#74a0d8"), ("disabled", BG_INPUT)]
+        "Active.TButton",
+        background=[("active", ACCENT_HOVER)],
+        foreground=[("active", "#0a0a0a")],
     )
-    style.map("Accent.TButton", foreground=[("disabled", FG_DIM)])
 
-    style.configure(
-        "Start.TButton",
-        background=GREEN,
-        foreground="#11111b",
-        font=(FONT, 10, "bold"),
-        padding=(16, 6),
-    )
-    style.map(
-        "Start.TButton", background=[("active", "#8cd694"), ("disabled", BG_INPUT)]
-    )
-    style.map("Start.TButton", foreground=[("disabled", FG_DIM)])
-
-    style.configure(
-        "Stop.TButton",
-        background=RED,
-        foreground="#11111b",
-        font=(FONT, 10, "bold"),
-        padding=(16, 6),
-    )
-    style.map(
-        "Stop.TButton", background=[("active", "#d67a94"), ("disabled", BG_INPUT)]
-    )
-    style.map("Stop.TButton", foreground=[("disabled", FG_DIM)])
-
+    # Cards
     style.configure("Card.TFrame", background=BG_CARD)
     style.configure("Card.TLabel", background=BG_CARD, foreground=FG)
     style.configure(
@@ -399,41 +414,65 @@ def setup_theme(root: tk.Tk) -> None:
     style.configure(
         "OK.TLabel", background=BG_CARD, foreground=GREEN, font=(FONT, 10, "bold")
     )
-    style.configure("Card.TCheckbutton", background=BG_CARD, foreground=FG)
-    style.map("Card.TCheckbutton", background=[("active", BG_CARD)])
+    style.configure("Card.TCheckbutton", background=BG_CARD, foreground=FG_DIM)
+    style.map(
+        "Card.TCheckbutton",
+        background=[("active", BG_CARD)],
+        foreground=[("active", FG)],
+    )
 
+    # Status bar
     style.configure(
         "StatusBar.TLabel",
         background=BG_SURFACE,
         foreground=FG_DIM,
         font=(FONT, 9),
-        padding=(8, 4),
+        padding=(10, 5),
     )
+
+    # Empty state
     style.configure("Empty.TLabel", background=BG, foreground=FG_DIM, font=(FONT, 11))
 
+    # Progress bars — thin, clean
     style.configure(
         "Sim.Horizontal.TProgressbar",
         troughcolor=BG_INPUT,
         background=GREEN,
-        thickness=8,
+        thickness=6,
+        bordercolor=BG_INPUT,
+        lightcolor=GREEN,
+        darkcolor=GREEN,
     )
     style.configure(
         "SimWarn.Horizontal.TProgressbar",
         troughcolor=BG_INPUT,
         background=YELLOW,
-        thickness=8,
+        thickness=6,
+        bordercolor=BG_INPUT,
+        lightcolor=YELLOW,
+        darkcolor=YELLOW,
     )
     style.configure(
         "SimFrozen.Horizontal.TProgressbar",
         troughcolor=BG_INPUT,
         background=RED,
-        thickness=8,
+        thickness=6,
+        bordercolor=BG_INPUT,
+        lightcolor=RED,
+        darkcolor=RED,
     )
 
+    # Sliders
     style.configure(
-        "Horizontal.TScale", background=BG, troughcolor=BG_INPUT, sliderthickness=14
+        "Horizontal.TScale",
+        background=BG,
+        troughcolor=BG_INPUT,
+        sliderthickness=12,
+        bordercolor=BG_INPUT,
+        lightcolor=ACCENT,
+        darkcolor=ACCENT,
     )
-    style.map("Horizontal.TScale", background=[("active", BG_SURFACE)])
+    style.map("Horizontal.TScale", background=[("active", ACCENT)])
 
 
 # ---------------------------------------------------------------------------
@@ -620,11 +659,11 @@ class ZoneMonitorWidget(ttk.Frame):
             text="X",
             command=on_remove,
             bg=BG_CARD,
-            fg=RED,
-            activebackground=BG_SURFACE,
+            fg=FG_DIM,
+            activebackground=BG_CARD,
             activeforeground=RED,
             relief=tk.FLAT,
-            font=(FONT, 9, "bold"),
+            font=(FONT, 9),
             width=3,
             cursor="hand2",
             bd=0,
@@ -765,26 +804,24 @@ class FreezeDetectorApp:
             toolbar,
             text="Select Zones",
             command=self._select_zones,
-            style="Accent.TButton",
         )
-        self._select_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self._select_btn.pack(side=tk.LEFT, padx=(0, 4))
 
-        self._start_btn = ttk.Button(
+        self._monitor_btn = ttk.Button(
             toolbar,
             text="Start (F11)",
-            command=self._start_monitoring,
-            style="Start.TButton",
+            command=self._toggle_monitoring,
         )
-        self._start_btn.pack(side=tk.LEFT, padx=3)
+        self._monitor_btn.pack(side=tk.LEFT, padx=4)
 
-        self._stop_btn = ttk.Button(
+        self._preview_btn = ttk.Button(
             toolbar,
-            text="Stop (F12)",
-            command=self._stop_monitoring,
-            style="Stop.TButton",
-            state=tk.DISABLED,
+            text="Show Zones",
+            command=self._toggle_preview,
         )
-        self._stop_btn.pack(side=tk.LEFT, padx=3)
+        self._preview_btn.pack(side=tk.RIGHT, padx=3)
+        self._preview_window: tk.Toplevel | None = None
+        self._preview_photo: tk.PhotoImage | None = None
 
         # --- Settings ---
         settings = ttk.LabelFrame(main, text="  Settings  ", padding=10)
@@ -883,9 +920,73 @@ class FreezeDetectorApp:
         self._interval_var.set(v)
         self._interval_label.configure(text=f"{v}ms")
 
+    # --- Zone preview ---
+
+    def _toggle_preview(self) -> None:
+        if self._preview_window and self._preview_window.winfo_exists():
+            self._hide_preview()
+        else:
+            self._show_preview()
+
+    def _show_preview(self) -> None:
+        if not self.zones:
+            self._status_var.set("No zones to preview")
+            return
+
+        self.root.withdraw()
+        self.root.update_idletasks()
+        time.sleep(0.3)
+
+        screenshot = self._capturer.grab_fullscreen()
+        self.root.deiconify()
+
+        screen_w = screenshot.width
+        screen_h = screenshot.height
+
+        self._preview_window = tk.Toplevel(self.root)
+        self._preview_window.overrideredirect(True)
+        self._preview_window.attributes("-topmost", True)
+        self._preview_window.geometry(f"{screen_w}x{screen_h}+0+0")
+
+        canvas = tk.Canvas(
+            self._preview_window, width=screen_w, height=screen_h,
+            highlightthickness=0, cursor="hand2",
+        )
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        self._preview_photo = pil_to_tk(screenshot)
+        canvas.create_image(0, 0, anchor=tk.NW, image=self._preview_photo)
+
+        for i, zone in enumerate(self.zones):
+            left, top, right, bottom = zone.bbox
+            canvas.create_rectangle(
+                left, top, right, bottom,
+                outline=SELECTION_COLOR, width=3,
+            )
+            canvas.create_text(
+                left + 5, top + 5, text=zone.name,
+                anchor=tk.NW, fill=SELECTION_COLOR,
+                font=(FONT, 12, "bold"),
+            )
+
+        # Dismiss on click or Escape
+        canvas.bind("<Button-1>", lambda e: self._hide_preview())
+        self._preview_window.bind("<Escape>", lambda e: self._hide_preview())
+        self._preview_window.focus_force()
+
+        self._preview_btn.configure(text="Hide Zones", style="Active.TButton")
+
+    def _hide_preview(self) -> None:
+        if self._preview_window and self._preview_window.winfo_exists():
+            self._preview_window.destroy()
+        self._preview_window = None
+        self._preview_photo = None
+        self._preview_btn.configure(text="Show Zones", style="TButton")
+
     def _select_zones(self) -> None:
         if self.is_monitoring:
             self._stop_monitoring()
+        self._hide_preview()
         ZoneSelector(self.root, self._capturer, self._on_zones_selected)
 
     def _on_zones_selected(
@@ -937,14 +1038,19 @@ class FreezeDetectorApp:
 
         self._status_var.set(f"{len(self.zones)} zone(s)")
 
+    def _toggle_monitoring(self) -> None:
+        if self.is_monitoring:
+            self._stop_monitoring()
+        else:
+            self._start_monitoring()
+
     def _start_monitoring(self) -> None:
         if not self.zones:
             self._status_var.set("No zones to monitor")
             return
 
         self.is_monitoring = True
-        self._start_btn.configure(state=tk.DISABLED)
-        self._stop_btn.configure(state=tk.NORMAL)
+        self._monitor_btn.configure(text="Stop (F12)", style="Active.TButton")
         self._select_btn.configure(state=tk.DISABLED)
         self._status_var.set("Monitoring...")
         self._monitor_cycle()
@@ -956,8 +1062,7 @@ class FreezeDetectorApp:
             self._after_id = None
         for state in self.states:
             state.reset()
-        self._start_btn.configure(state=tk.NORMAL)
-        self._stop_btn.configure(state=tk.DISABLED)
+        self._monitor_btn.configure(text="Start (F11)", style="TButton")
         self._select_btn.configure(state=tk.NORMAL)
         self._status_var.set("Monitoring stopped")
 

@@ -68,18 +68,17 @@ exec /opt/screensound/venv/bin/python /opt/screensound/freeze_detector.py "$@"
 EOF
 chmod 755 "${PKG_DIR}/usr/bin/${APP_NAME}"
 
-# --- Generate icon (teal circle with S) ---
+# --- Generate icon (orange circle with S) ---
 python3 -c "
 from PIL import Image, ImageDraw, ImageFont
 img = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
 draw = ImageDraw.Draw(img)
-draw.ellipse([8, 8, 120, 120], fill='#25403B', outline='#36BFB1', width=4)
-draw.ellipse([20, 20, 108, 108], fill='#2C736C')
+draw.ellipse([4, 4, 124, 124], fill='#e8651a', outline='#cc5510', width=3)
 try:
-    font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 56)
+    font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 60)
 except:
     font = ImageFont.load_default()
-draw.text((64, 64), 'S', fill='#94F2E9', font=font, anchor='mm')
+draw.text((64, 64), 'S', fill='#ffffff', font=font, anchor='mm')
 img.save('${PKG_DIR}/usr/share/icons/hicolor/128x128/apps/${APP_NAME}.png')
 print('Icon generated.')
 "
