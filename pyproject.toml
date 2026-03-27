@@ -1,0 +1,10 @@
+[project]
+name = "screensound"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=12.1.1",
+    "pynput>=1.8.1",
+]
