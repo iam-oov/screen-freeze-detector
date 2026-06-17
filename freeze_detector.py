@@ -12,6 +12,7 @@ import threading
 import time
 import tkinter as tk
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,10 +106,18 @@ class ImageComparator(Protocol):
 
 class InputInjector(Protocol):
     def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None: ...
+    def type_text(
+        self, text: str, bbox: tuple[int, int, int, int] | None = None
+    ) -> None: ...
 
 
 class RemoteNotifier(Protocol):
     def notify_frozen(self, image: Image.Image, zone_name: str) -> None: ...
+
+
+class RemoteCommandSource(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -234,35 +243,48 @@ class XdotoolEnterInjector:
     def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None:
         if not self._enabled:
             return
+        self._send([["key", "--clearmodifiers", "Return"]], bbox)
+
+    def type_text(
+        self, text: str, bbox: tuple[int, int, int, int] | None = None
+    ) -> None:
+        # Gated by the Telegram flow, not by self._enabled (that toggle is for
+        # the auto-Enter on freeze). Types the text, then Enter to submit it.
+        if not text:
+            return
+        self._send(
+            [["type", "--clearmodifiers", "--", text],
+             ["key", "--clearmodifiers", "Return"]],
+            bbox,
+        )
+
+    def _send(
+        self, commands: list[list[str]], bbox: tuple[int, int, int, int] | None
+    ) -> None:
+        # Click the zone center to steal focus (XTest click is treated as real
+        # input where windowactivate is rejected), run the commands, then put
+        # the mouse back where it was.
         try:
             orig_pos = self._current_mouse_position() if bbox is not None else None
             if bbox is not None:
                 cx = (bbox[0] + bbox[2]) // 2
                 cy = (bbox[1] + bbox[3]) // 2
-                subprocess.run(
-                    ["xdotool", "mousemove", "--sync", str(cx), str(cy), "click", "1"],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "Return"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+                self._run("mousemove", "--sync", str(cx), str(cy), "click", "1")
+            for cmd in commands:
+                self._run(*cmd)
             if orig_pos is not None:
-                subprocess.run(
-                    [
-                        "xdotool", "mousemove", "--sync",
-                        str(orig_pos[0]), str(orig_pos[1]),
-                    ],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+                self._run("mousemove", "--sync", str(orig_pos[0]), str(orig_pos[1]))
         except FileNotFoundError:
             pass
+
+    @staticmethod
+    def _run(*args: str) -> None:
+        subprocess.run(
+            ["xdotool", *args],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     def _current_mouse_position(self) -> tuple[int, int] | None:
         try:
@@ -419,6 +441,71 @@ class TelegramNotifier:
             self.on_status(message)
         else:
             print(message, file=sys.stderr)
+
+
+class TelegramPoller:
+    API = "https://api.telegram.org"
+
+    def __init__(self, token: str = "", chat_id: str = "", on_command=None):
+        self._token = token
+        self._chat_id = str(chat_id)
+        self.on_command = on_command
+        self._thread: threading.Thread | None = None
+        self._running = False
+        self._offset: int | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._token and self._chat_id)
+
+    def start(self) -> None:
+        if not self.configured or self.on_command is None:
+            return
+        self._running = True
+        if self._thread is not None and self._thread.is_alive():
+            return  # an existing poll loop will keep running
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        # The loop exits after the current long-poll returns (up to ~25s).
+        self._running = False
+
+    def _loop(self) -> None:
+        self._skip_backlog()
+        while self._running:
+            for update in self._get_updates(long_poll=25):
+                self._offset = update["update_id"] + 1
+                text = self._command_from(update)
+                if text is not None and self.on_command:
+                    self.on_command(text)
+
+    def _command_from(self, update: dict) -> str | None:
+        # Return the text only if it came from the configured chat — nobody
+        # else with the bot should be able to type on this screen.
+        msg = update.get("message") or {}
+        text = msg.get("text")
+        from_chat = str(msg.get("chat", {}).get("id"))
+        return text if (text and from_chat == self._chat_id) else None
+
+    def _skip_backlog(self) -> None:
+        # Advance past messages that arrived before polling started, so an old
+        # text (e.g. /start) is never injected on enable.
+        updates = self._get_updates(long_poll=0)
+        if updates:
+            self._offset = updates[-1]["update_id"] + 1
+
+    def _get_updates(self, long_poll: int) -> list[dict]:
+        params = {"timeout": long_poll}
+        if self._offset is not None:
+            params["offset"] = self._offset
+        url = f"{self.API}/bot{self._token}/getUpdates?{urllib.parse.urlencode(params)}"
+        try:
+            with urllib.request.urlopen(url, timeout=long_poll + 10) as resp:
+                data = json.load(resp)
+            return data.get("result", []) if data.get("ok") else []
+        except (urllib.error.URLError, OSError):
+            return []
 
 
 # ---------------------------------------------------------------------------
@@ -1001,6 +1088,7 @@ class FreezeDetectorApp:
         hotkeys: HotkeyListener,
         injector: InputInjector,
         notifier: RemoteNotifier,
+        poller: RemoteCommandSource,
     ):
         self.root = root
         self.root.title(f"Screen Freeze Detector v{VERSION}")
@@ -1016,6 +1104,8 @@ class FreezeDetectorApp:
         self._hotkeys = hotkeys
         self._injector = injector
         self._notifier = notifier
+        self._poller = poller
+        self._last_frozen_bbox: tuple[int, int, int, int] | None = None
 
         self.zones: list[ZoneConfig] = []
         self.states: list[ZoneState] = []
@@ -1183,10 +1273,41 @@ class FreezeDetectorApp:
         self._interval_label.configure(text=f"{v}ms")
 
     def _on_press_enter_toggled(self, *_args) -> None:
-        self._injector.enabled = self._press_enter_var.get()
+        on = self._press_enter_var.get()
+        self._injector.enabled = on
+        if on:
+            self._inject_already_frozen()
+
+    def _inject_already_frozen(self) -> None:
+        # Same edge-trigger gap as _notify_already_frozen: a zone frozen before
+        # this toggle was enabled would otherwise wait for the next edge.
+        for i, state in enumerate(self.states):
+            if state.is_frozen and i < len(self.zones):
+                self._injector.inject(bbox=self.zones[i].bbox)
 
     def _on_telegram_toggled(self, *_args) -> None:
-        self._notifier.enabled = self._telegram_var.get()
+        on = self._telegram_var.get()
+        self._notifier.enabled = on
+        if on:
+            self._poller.start()
+            self._notify_already_frozen()
+        else:
+            self._poller.stop()
+
+    def _notify_already_frozen(self) -> None:
+        # notify_frozen is edge-triggered in FreezeMonitor, so a zone that froze
+        # while Telegram was off never re-fires once enabled. Catch up here by
+        # sending the current frame of any zone that is already frozen.
+        for i, state in enumerate(self.states):
+            if state.is_frozen and state.prev_image is not None and i < len(self.zones):
+                self._notifier.notify_frozen(state.prev_image, self.zones[i].name)
+
+    def handle_command(self, text: str) -> None:
+        if self._last_frozen_bbox is None:
+            self.show_status("Telegram reply ignored: no frozen zone yet")
+            return
+        self._injector.type_text(text, self._last_frozen_bbox)
+        self.show_status(f"Typed into last frozen zone: {text[:40]}")
 
     def show_status(self, message: str) -> None:
         self._status_var.set(message)
@@ -1353,6 +1474,8 @@ class FreezeDetectorApp:
         for i, new_img in results:
             if i < len(self.widgets):
                 self.widgets[i].update_display(self.states[i], new_img)
+            if i < len(self.zones) and self.states[i].is_frozen:
+                self._last_frozen_bbox = self.zones[i].bbox
 
         ts = time.strftime("%H:%M:%S")
         frozen_text = "  |  FROZEN DETECTED" if any_frozen else ""
@@ -1365,6 +1488,7 @@ class FreezeDetectorApp:
     def _on_close(self) -> None:
         self._stop_monitoring()
         self._hotkeys.stop()
+        self._poller.stop()
         self._sound.cleanup()
         self.root.destroy()
 
@@ -1384,6 +1508,10 @@ def main() -> None:
         chat_id=settings.telegram_chat_id,
         enabled=False,
     )
+    poller = TelegramPoller(
+        token=settings.telegram_token,
+        chat_id=settings.telegram_chat_id,
+    )
     monitor = FreezeMonitor(capturer, comparator, sound, injector, notifier)
 
     root = tk.Tk()
@@ -1393,8 +1521,11 @@ def main() -> None:
         on_stop=lambda: root.after(0, app._stop_monitoring),
     )
 
-    app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys, injector, notifier)
+    app = FreezeDetectorApp(
+        root, capturer, sound, monitor, hotkeys, injector, notifier, poller
+    )
     notifier.on_status = lambda msg: root.after(0, app.show_status, msg)
+    poller.on_command = lambda text: root.after(0, app.handle_command, text)
     root.mainloop()
 
 
