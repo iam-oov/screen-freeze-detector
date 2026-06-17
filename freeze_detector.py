@@ -1,10 +1,12 @@
 """Screen Freeze Detector - Detects when screen zones freeze."""
 
 import io
+import json
 import math
 import os
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -343,10 +345,17 @@ def encode_multipart(
 class TelegramNotifier:
     API = "https://api.telegram.org"
 
-    def __init__(self, token: str = "", chat_id: str = "", enabled: bool = False):
+    def __init__(
+        self,
+        token: str = "",
+        chat_id: str = "",
+        enabled: bool = False,
+        on_status=None,
+    ):
         self._token = token
         self._chat_id = chat_id
         self._enabled = enabled
+        self.on_status = on_status
 
     @property
     def configured(self) -> bool:
@@ -387,9 +396,29 @@ class TelegramNotifier:
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         )
         try:
-            urllib.request.urlopen(req, timeout=10)
-        except (urllib.error.URLError, OSError):
-            pass
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                payload = json.load(resp)
+            if payload.get("ok"):
+                self._report("Telegram: image sent")
+            else:
+                self._report(f"Telegram refused: {payload.get('description', '?')}")
+        except urllib.error.HTTPError as e:
+            self._report(f"Telegram error {e.code}: {self._error_detail(e)}")
+        except (urllib.error.URLError, OSError) as e:
+            self._report(f"Telegram unreachable: {e}")
+
+    @staticmethod
+    def _error_detail(e: urllib.error.HTTPError) -> str:
+        try:
+            return json.loads(e.read().decode()).get("description", "")
+        except Exception:
+            return ""
+
+    def _report(self, message: str) -> None:
+        if self.on_status is not None:
+            self.on_status(message)
+        else:
+            print(message, file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1159,6 +1188,9 @@ class FreezeDetectorApp:
     def _on_telegram_toggled(self, *_args) -> None:
         self._notifier.enabled = self._telegram_var.get()
 
+    def show_status(self, message: str) -> None:
+        self._status_var.set(message)
+
     # --- Zone preview ---
 
     def _toggle_preview(self) -> None:
@@ -1362,6 +1394,7 @@ def main() -> None:
     )
 
     app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys, injector, notifier)
+    notifier.on_status = lambda msg: root.after(0, app.show_status, msg)
     root.mainloop()
 
 
