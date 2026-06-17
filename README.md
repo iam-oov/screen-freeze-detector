@@ -1,6 +1,6 @@
 # Screen Freeze Detector
 
-Monitors specific screen zones and plays an alert sound when any zone freezes (consecutive frames are nearly identical). Designed for detecting not moving screen areas.
+Monitors specific screen zones and reacts when any zone freezes (consecutive captures are nearly identical). Designed for spotting non-moving areas — e.g. a paused or buffering video. On freeze it can beep, auto-press Enter on the zone, and act as a Telegram remote control: it sends the frozen zone's image to your phone, and your text reply gets typed back into the zone.
 
 ![Screen Freeze Detector](screenshots/app.png)
 
@@ -10,8 +10,9 @@ Monitors specific screen zones and plays an alert sound when any zone freezes (c
 - Real-time similarity comparison using RMS pixel difference
 - Configurable threshold, check interval, and consecutive frame count
 - Visual progress bars per zone with color-coded status (green/yellow/red)
-- Alert sound generated at runtime (no external audio files needed)
-- Optional auto-input on freeze: click the zone center + press Enter (edge-triggered, one fire per freeze event) — useful for auto-confirming prompts in a target window
+- Per-zone **Enabled** and **Sound** toggles — alert sound generated at runtime (no external audio files)
+- Optional auto-input on freeze: click the zone center + press Enter (edge-triggered, one fire per freeze event)
+- Optional Telegram remote control: get the frozen zone's image on your phone and reply with text that gets typed into the zone
 - Global hotkeys: **F11** start, **F12** stop (work even when app is not focused)
 - Dark theme UI
 
@@ -22,7 +23,10 @@ Monitors specific screen zones and plays an alert sound when any zone freezes (c
 - `scrot` (screen capture)
 - `aplay` (sound playback, from `alsa-utils`)
 - `python3-tk` (tkinter)
-- `xdotool` (only required if you enable the auto-click + Enter feature)
+- `xdotool` (only for the auto-Enter and Telegram-typing features)
+- A Telegram bot token + chat id (only for the Telegram feature — see below)
+
+Python deps (Pillow, pynput, pydantic-settings) are handled by `uv` / the `.deb` installer.
 
 ## Quick start
 
@@ -37,25 +41,46 @@ uv run python freeze_detector.py
 2. Drag rectangles over the areas you want to monitor
 3. Press **Enter** to confirm (Escape to cancel, right-click to undo)
 4. Adjust **Threshold**, **Interval**, and **Consec. frames** as needed
-5. (Optional) Tick **"Click zone center and press Enter on freeze"** if you want auto-input when a zone freezes
-6. Click **Start (F11)** -- monitoring begins
-7. When a zone is frozen for the required consecutive frames, an alert sounds (and optionally fires a synthetic click + Enter)
-8. Click **Stop (F12)** to stop monitoring
+5. Per zone, toggle **Enabled** and **Sound** as you like
+6. (Optional) tick **"Click zone center and press Enter on freeze"** for auto-input
+7. (Optional) tick **"Send zone image to Telegram on freeze"** (needs credentials — see below)
+8. Click **Start (F11)** -- monitoring begins
+9. Click **Stop (F12)** to stop monitoring
 
 ### Auto-input behavior (opt-in)
 
-When the checkbox is enabled, on the transition from "not frozen" to "frozen" the app will:
-
-1. Save the current mouse position
-2. Move the cursor to the zone center and click once (forces focus on the window under that point)
-3. Send `Enter` via `xdotool` (lands on the now-focused window)
-4. Restore the cursor to its original position
+On the transition from "not frozen" to "frozen", the app saves the mouse position, clicks the zone center (to focus the window under it), sends the input via `xdotool`, and restores the mouse.
 
 Caveats:
 
-- **The click has side effects.** If the zone center overlaps a button, link, or interactive element, the click will trigger it. Draw zones over static content areas (terminal body, video, plain text) when you plan to enable this.
-- **Edge-triggered, not level-triggered.** Enter fires exactly once per freeze event, not continuously while frozen. The sound remains level-triggered (with its own cooldown).
-- **Click-to-focus WMs only.** Works on GNOME default. On focus-follows-mouse setups the mouse-restore step would steal focus back — unsupported.
+- **The click has side effects.** If the zone center overlaps a button, link, or interactive element, the click will trigger it. Draw zones over static content areas (video, plain text) when you enable this.
+- **Edge-triggered, not level-triggered.** Input fires exactly once per freeze event, not continuously. The sound remains level-triggered (with its own cooldown). Enabling a toggle while a zone is already frozen fires once immediately.
+- **Click-to-focus WMs only.** Works on GNOME default. Focus-follows-mouse setups are unsupported.
+
+## Telegram remote control (optional)
+
+On freeze, the frozen zone's image is sent to your Telegram chat; replying with text types that text into the **last frozen zone** (+ Enter).
+
+Setup:
+
+1. Create a bot: message **@BotFather** → `/newbot` → copy the **token**.
+2. Get your **chat id**: send any message to your new bot, then open
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
+   (Note: the number before the `:` in the token is the *bot's* id, not yours.)
+3. Configure credentials:
+   ```bash
+   cp .env.example .env
+   # edit .env and set the two values
+   ```
+4. Run the app, then tick **"Send zone image to Telegram on freeze"**.
+
+Security & behavior:
+
+- `.env` is gitignored — never commit your token.
+- The poller only obeys messages from your configured `chat_id`; everyone else is ignored.
+- Receiving works via long-polling (no public URL needed); old messages are skipped on enable.
+- Send/receive errors (bad token or chat id) surface in the status bar instead of failing silently.
+- Replies target the most recently frozen zone.
 
 ## Install as .deb (Ubuntu/Debian)
 
@@ -72,27 +97,39 @@ To uninstall:
 sudo apt remove screensound
 ```
 
+Note: the `.deb` launcher does not pass env vars, so the Telegram feature currently needs to be run from a shell with `.env` present.
+
 ## Configuration
 
-All defaults are constants at the top of `freeze_detector.py`:
+App defaults are constants at the top of `freeze_detector.py`:
 
 | Constant                     | Default | Description                                    |
 | ---------------------------- | ------- | ---------------------------------------------- |
-| `DEFAULT_THRESHOLD`          | `0.995` | Similarity threshold to consider a zone frozen |
+| `DEFAULT_THRESHOLD`          | `0.997` | Similarity threshold to consider a zone frozen |
 | `DEFAULT_INTERVAL_MS`        | `5000`  | Milliseconds between each check                |
 | `DEFAULT_CONSECUTIVE_FRAMES` | `4`     | Consecutive frozen frames before alerting      |
 | `ALERT_FREQUENCY`            | `880`   | Alert beep frequency in Hz                     |
 | `ALERT_BEEPS`                | `2`     | Number of beeps per alert                      |
 | `ALERT_COOLDOWN`             | `5.0`   | Seconds between repeated alerts                |
 
+Telegram credentials come from the environment / `.env` (see `.env.example`):
+
+| Variable                       | Description              |
+| ------------------------------ | ------------------------ |
+| `SCREENSOUND_TELEGRAM_TOKEN`   | Bot token from BotFather |
+| `SCREENSOUND_TELEGRAM_CHAT_ID` | Your chat id             |
+
+The version comes from the `VERSION` file — the single source of truth for the window title, `build_deb.sh`, and `pyproject.toml`'s dynamic version. To bump it, edit `VERSION`.
+
 ## Architecture
 
-Single-file application (`freeze_detector.py`) following SOLID principles:
+`freeze_detector.py` holds the app; `config.py` holds the typed settings. SOLID — Protocols with injected implementations:
 
-- **Protocols**: `ScreenCapturer`, `SoundPlayer`, `HotkeyListener`, `ImageComparator`, `InputInjector`
-- **Implementations**: `ScrotCapturer`, `AplaySound`, `PynputHotkeys`, `RMSComparator`, `XdotoolEnterInjector`
+- **Protocols**: `ScreenCapturer`, `SoundPlayer`, `HotkeyListener`, `ImageComparator`, `InputInjector`, `RemoteNotifier`, `RemoteCommandSource`
+- **Implementations**: `ScrotCapturer`, `AplaySound`, `PynputHotkeys`, `RMSComparator`, `XdotoolEnterInjector` (Enter + `type_text`), `TelegramNotifier` (send image), `TelegramPoller` (receive text)
 - **Domain**: `ZoneConfig`, `ZoneState`, `FreezeMonitor`
 - **UI**: `ZoneSelector`, `ZoneMonitorWidget`, `FreezeDetectorApp`
+- **Config**: `config.Settings` (pydantic-settings)
 - **Composition root**: `main()` wires all dependencies
 
 ## License

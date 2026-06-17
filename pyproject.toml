@@ -1,7 +1,7 @@
 [project]
 name = "screensound"
 dynamic = ["version"]
-description = "Add your description here"
+description = "Detect frozen screen zones and react with sound, auto-Enter, or a Telegram remote control"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
