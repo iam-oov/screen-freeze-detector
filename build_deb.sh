@@ -25,7 +25,7 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Depends: python3 (>= 3.10), python3-venv, python3-tk, scrot, alsa-utils
+Depends: python3 (>= 3.10), python3-venv, python3-tk, scrot, alsa-utils, xdotool
 Maintainer: ScreenSound <screensound@local>
 Description: Screen Freeze Detector
  Monitors screen zones and alerts with sound when a zone freezes.

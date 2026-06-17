@@ -26,11 +26,11 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 SELECTION_COLOR = "#39FF14"
 
-DEFAULT_THRESHOLD = 0.995
+DEFAULT_THRESHOLD = 0.997
 DEFAULT_INTERVAL_MS = 5000
 DEFAULT_CONSECUTIVE_FRAMES = 4
 
@@ -90,6 +90,10 @@ class HotkeyListener(Protocol):
 
 class ImageComparator(Protocol):
     def compute_similarity(self, img1: Image.Image, img2: Image.Image) -> float: ...
+
+
+class InputInjector(Protocol):
+    def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +195,87 @@ class RMSComparator:
         return 1.0 - (rms / 255.0)
 
 
+class XdotoolEnterInjector:
+    # xdotool key (sin --window) usa XTest e inyecta al stream global,
+    # llegando a la ventana con foco real. --window usaba XSendEvent, que
+    # Ghostty (y otros terminales GPU) filtran. --clearmodifiers evita que
+    # un Shift residual convierta Return en un escape sequence.
+    #
+    # El click sintetico via XTest SI cambia foco (Mutter lo trata como input
+    # humano real), a diferencia de `windowactivate`, que Mutter rechaza por
+    # focus stealing prevention. Por eso podemos clickear el centro de la zona
+    # para forzar foco en la ventana correcta antes del Enter.
+    def __init__(self, enabled: bool = False):
+        self._enabled = enabled
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self._enabled = value
+
+    def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None:
+        if not self._enabled:
+            return
+        try:
+            orig_pos = self._current_mouse_position() if bbox is not None else None
+            if bbox is not None:
+                cx = (bbox[0] + bbox[2]) // 2
+                cy = (bbox[1] + bbox[3]) // 2
+                subprocess.run(
+                    ["xdotool", "mousemove", "--sync", str(cx), str(cy), "click", "1"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "Return"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if orig_pos is not None:
+                subprocess.run(
+                    [
+                        "xdotool", "mousemove", "--sync",
+                        str(orig_pos[0]), str(orig_pos[1]),
+                    ],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        except FileNotFoundError:
+            pass
+
+    def _current_mouse_position(self) -> tuple[int, int] | None:
+        try:
+            result = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return None
+        x, y = None, None
+        for line in result.stdout.splitlines():
+            if line.startswith("X="):
+                try:
+                    x = int(line[2:])
+                except ValueError:
+                    return None
+            elif line.startswith("Y="):
+                try:
+                    y = int(line[2:])
+                except ValueError:
+                    return None
+        if x is None or y is None:
+            return None
+        return (x, y)
+
+
 class PynputHotkeys:
     def __init__(self, on_start: callable, on_stop: callable):
         from pynput import keyboard
@@ -250,11 +335,16 @@ class ZoneState:
 
 class FreezeMonitor:
     def __init__(
-        self, capturer: ScreenCapturer, comparator: ImageComparator, sound: SoundPlayer
+        self,
+        capturer: ScreenCapturer,
+        comparator: ImageComparator,
+        sound: SoundPlayer,
+        injector: InputInjector,
     ):
         self._capturer = capturer
         self._comparator = comparator
         self._sound = sound
+        self._injector = injector
 
     def check_zones(
         self,
@@ -279,9 +369,12 @@ class FreezeMonitor:
                 similarity = self._comparator.compute_similarity(
                     state.prev_image, new_img
                 )
+                was_frozen = state.is_frozen
                 state.update(similarity, threshold, consec_required)
                 if state.is_frozen:
                     self._sound.play()
+                    if not was_frozen:
+                        self._injector.inject(bbox=zone.bbox)
 
             state.prev_image = new_img
             results.append((i, new_img))
@@ -767,10 +860,11 @@ class FreezeDetectorApp:
         sound: SoundPlayer,
         monitor: FreezeMonitor,
         hotkeys: HotkeyListener,
+        injector: InputInjector,
     ):
         self.root = root
         self.root.title(f"Screen Freeze Detector v{VERSION}")
-        self.root.geometry("540x660")
+        self.root.geometry("540x680")
         self.root.minsize(440, 460)
 
         self._icon = pil_to_tk(generate_app_icon())
@@ -780,6 +874,7 @@ class FreezeDetectorApp:
         self._sound = sound
         self._monitor = monitor
         self._hotkeys = hotkeys
+        self._injector = injector
 
         self.zones: list[ZoneConfig] = []
         self.states: list[ZoneState] = []
@@ -875,6 +970,16 @@ class FreezeDetectorApp:
             highlightbackground=BORDER,
         ).pack(side=tk.RIGHT)
 
+        row4 = ttk.Frame(settings)
+        row4.pack(fill=tk.X, pady=(6, 0))
+        self._press_enter_var = tk.BooleanVar(value=self._injector.enabled)
+        self._press_enter_var.trace_add("write", self._on_press_enter_toggled)
+        ttk.Checkbutton(
+            row4,
+            text="Click zone center and press Enter on freeze",
+            variable=self._press_enter_var,
+        ).pack(side=tk.LEFT)
+
         # --- Zone list ---
         zones_lf = ttk.LabelFrame(main, text="  Monitored Zones  ", padding=4)
         zones_lf.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 6))
@@ -919,6 +1024,9 @@ class FreezeDetectorApp:
         v = int(float(self._interval_var.get()))
         self._interval_var.set(v)
         self._interval_label.configure(text=f"{v}ms")
+
+    def _on_press_enter_toggled(self, *_args) -> None:
+        self._injector.enabled = self._press_enter_var.get()
 
     # --- Zone preview ---
 
@@ -1107,7 +1215,8 @@ def main() -> None:
     capturer = ScrotCapturer()
     comparator = RMSComparator()
     sound = AplaySound()
-    monitor = FreezeMonitor(capturer, comparator, sound)
+    injector = XdotoolEnterInjector(enabled=False)
+    monitor = FreezeMonitor(capturer, comparator, sound, injector)
 
     root = tk.Tk()
 
@@ -1116,7 +1225,7 @@ def main() -> None:
         on_stop=lambda: root.after(0, app._stop_monitoring),
     )
 
-    app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys)
+    app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys, injector)
     root.mainloop()
 
 
