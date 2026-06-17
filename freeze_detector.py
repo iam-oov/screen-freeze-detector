@@ -6,8 +6,11 @@ import os
 import struct
 import subprocess
 import tempfile
+import threading
 import time
 import tkinter as tk
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import ttk
@@ -22,6 +25,8 @@ try:
     HAS_IMAGETK = True
 except ImportError:
     HAS_IMAGETK = False
+
+from config import settings
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -98,6 +103,10 @@ class ImageComparator(Protocol):
 
 class InputInjector(Protocol):
     def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None: ...
+
+
+class RemoteNotifier(Protocol):
+    def notify_frozen(self, image: Image.Image, zone_name: str) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +312,86 @@ class PynputHotkeys:
         self._listener.stop()
 
 
+def encode_multipart(
+    fields: dict[str, str],
+    file_field: str,
+    filename: str,
+    file_bytes: bytes,
+    boundary: str,
+) -> bytes:
+    """Build a multipart/form-data body (Telegram sendPhoto needs a file upload)."""
+    crlf = b"\r\n"
+    b = boundary.encode()
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts += [
+            b"--" + b + crlf,
+            f'Content-Disposition: form-data; name="{name}"'.encode() + crlf + crlf,
+            value.encode() + crlf,
+        ]
+    parts += [
+        b"--" + b + crlf,
+        f'Content-Disposition: form-data; name="{file_field}"; filename="{filename}"'.encode()
+        + crlf,
+        b"Content-Type: image/png" + crlf + crlf,
+        file_bytes + crlf,
+        b"--" + b + b"--" + crlf,
+    ]
+    return b"".join(parts)
+
+
+class TelegramNotifier:
+    API = "https://api.telegram.org"
+
+    def __init__(self, token: str = "", chat_id: str = "", enabled: bool = False):
+        self._token = token
+        self._chat_id = chat_id
+        self._enabled = enabled
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._token and self._chat_id)
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self._enabled = value
+
+    def notify_frozen(self, image: Image.Image, zone_name: str) -> None:
+        if not self._enabled or not self.configured:
+            return
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        caption = f"{zone_name} frozen at {time.strftime('%H:%M:%S')}"
+        threading.Thread(
+            target=self._send_photo, args=(buf.getvalue(), caption), daemon=True
+        ).start()
+
+    def _send_photo(self, png_bytes: bytes, caption: str) -> None:
+        # ponytail: fixed multipart boundary — a clash with the PNG bytes is
+        # astronomically unlikely; randomize only if it ever actually bites.
+        boundary = "----screensoundFormBoundary7MA4YWxkTrZu0gW"
+        body = encode_multipart(
+            {"chat_id": self._chat_id, "caption": caption},
+            "photo",
+            "zone.png",
+            png_bytes,
+            boundary,
+        )
+        req = urllib.request.Request(
+            f"{self.API}/bot{self._token}/sendPhoto",
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except (urllib.error.URLError, OSError):
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Domain
 # ---------------------------------------------------------------------------
@@ -345,11 +434,13 @@ class FreezeMonitor:
         comparator: ImageComparator,
         sound: SoundPlayer,
         injector: InputInjector,
+        notifier: RemoteNotifier,
     ):
         self._capturer = capturer
         self._comparator = comparator
         self._sound = sound
         self._injector = injector
+        self._notifier = notifier
 
     def check_zones(
         self,
@@ -381,6 +472,7 @@ class FreezeMonitor:
                         self._sound.play()
                     if not was_frozen:
                         self._injector.inject(bbox=zone.bbox)
+                        self._notifier.notify_frozen(new_img, zone.name)
 
             state.prev_image = new_img
             results.append((i, new_img))
@@ -879,6 +971,7 @@ class FreezeDetectorApp:
         monitor: FreezeMonitor,
         hotkeys: HotkeyListener,
         injector: InputInjector,
+        notifier: RemoteNotifier,
     ):
         self.root = root
         self.root.title(f"Screen Freeze Detector v{VERSION}")
@@ -893,6 +986,7 @@ class FreezeDetectorApp:
         self._monitor = monitor
         self._hotkeys = hotkeys
         self._injector = injector
+        self._notifier = notifier
 
         self.zones: list[ZoneConfig] = []
         self.states: list[ZoneState] = []
@@ -998,6 +1092,22 @@ class FreezeDetectorApp:
             variable=self._press_enter_var,
         ).pack(side=tk.LEFT)
 
+        row5 = ttk.Frame(settings)
+        row5.pack(fill=tk.X, pady=(4, 0))
+        self._telegram_var = tk.BooleanVar(value=False)
+        self._telegram_var.trace_add("write", self._on_telegram_toggled)
+        tg_check = ttk.Checkbutton(
+            row5,
+            text="Send zone image to Telegram on freeze",
+            variable=self._telegram_var,
+        )
+        tg_check.pack(side=tk.LEFT)
+        if not self._notifier.configured:
+            tg_check.configure(state=tk.DISABLED)
+            ttk.Label(
+                row5, text="(set SCREENSOUND_TELEGRAM_TOKEN / _CHAT_ID)"
+            ).pack(side=tk.LEFT, padx=(8, 0))
+
         # --- Zone list ---
         zones_lf = ttk.LabelFrame(main, text="  Monitored Zones  ", padding=4)
         zones_lf.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 6))
@@ -1045,6 +1155,9 @@ class FreezeDetectorApp:
 
     def _on_press_enter_toggled(self, *_args) -> None:
         self._injector.enabled = self._press_enter_var.get()
+
+    def _on_telegram_toggled(self, *_args) -> None:
+        self._notifier.enabled = self._telegram_var.get()
 
     # --- Zone preview ---
 
@@ -1234,7 +1347,12 @@ def main() -> None:
     comparator = RMSComparator()
     sound = AplaySound()
     injector = XdotoolEnterInjector(enabled=False)
-    monitor = FreezeMonitor(capturer, comparator, sound, injector)
+    notifier = TelegramNotifier(
+        token=settings.telegram_token,
+        chat_id=settings.telegram_chat_id,
+        enabled=False,
+    )
+    monitor = FreezeMonitor(capturer, comparator, sound, injector, notifier)
 
     root = tk.Tk()
 
@@ -1243,7 +1361,7 @@ def main() -> None:
         on_stop=lambda: root.after(0, app._stop_monitoring),
     )
 
-    app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys, injector)
+    app = FreezeDetectorApp(root, capturer, sound, monitor, hotkeys, injector, notifier)
     root.mainloop()
 
 

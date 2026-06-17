@@ -44,7 +44,7 @@ VENV_DIR="${INSTALL_DIR}/venv"
 echo "Setting up Python virtual environment..."
 python3 -m venv "$VENV_DIR"
 "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
-"${VENV_DIR}/bin/pip" install --quiet Pillow pynput
+"${VENV_DIR}/bin/pip" install --quiet Pillow pynput pydantic-settings
 
 echo "ScreenSound installed successfully."
 EOF
@@ -60,6 +60,7 @@ chmod 755 "${PKG_DIR}/DEBIAN/prerm"
 
 # --- Application files ---
 cp freeze_detector.py "${PKG_DIR}/opt/${APP_NAME}/freeze_detector.py"
+cp config.py "${PKG_DIR}/opt/${APP_NAME}/config.py"
 cp VERSION "${PKG_DIR}/opt/${APP_NAME}/VERSION"
 
 # --- Launcher script ---

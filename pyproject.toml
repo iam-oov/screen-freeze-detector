@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=12.1.1",
+    "pydantic-settings>=2.14.1",
     "pynput>=1.8.1",
 ]
 
@@ -18,4 +19,4 @@ path = "VERSION"
 pattern = "(?P<version>.+)"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["freeze_detector.py"]
+only-include = ["freeze_detector.py", "config.py"]
