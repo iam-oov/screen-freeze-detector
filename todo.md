@@ -1,0 +1,2 @@
+- los botones de subir/bajar las pantallas congeladas estan muy pequeños. Lo idea seria mover esos botones a una estructura como la siguiente: buton disminuir, contador, boton aumentar
+- hacer que telegram puede enviar un mensaje con multiples zonas congeladas, para que el usuario pueda elegir cual descongelar
