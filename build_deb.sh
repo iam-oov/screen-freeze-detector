@@ -4,11 +4,13 @@ set -euo pipefail
 APP_NAME="screensound"
 VERSION=$(< VERSION)
 ARCH="amd64"
-PKG_DIR="${APP_NAME}_${VERSION}_${ARCH}"
+OUT_DIR="dist"
+PKG_DIR="${OUT_DIR}/${APP_NAME}_${VERSION}_${ARCH}"
 
 echo "Building ${APP_NAME} ${VERSION} .deb package..."
 
 # Clean previous build
+mkdir -p "$OUT_DIR"
 rm -rf "$PKG_DIR" "${PKG_DIR}.deb"
 
 # Create directory structure

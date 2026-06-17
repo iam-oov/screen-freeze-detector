@@ -29,7 +29,7 @@ try:
 except ImportError:
     HAS_IMAGETK = False
 
-from config import settings
+from config import save_telegram, settings
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -385,6 +385,10 @@ class TelegramNotifier:
     def enabled(self, value: bool) -> None:
         self._enabled = value
 
+    def set_credentials(self, token: str, chat_id: str) -> None:
+        self._token = token
+        self._chat_id = str(chat_id)
+
     def notify_frozen(self, image: Image.Image, zone_name: str) -> None:
         if not self._enabled or not self.configured:
             return
@@ -451,6 +455,13 @@ class TelegramPoller:
     @property
     def configured(self) -> bool:
         return bool(self._token and self._chat_id)
+
+    def set_credentials(self, token: str, chat_id: str) -> None:
+        # Reset offset: a new bot has its own getUpdates stream. Caller is
+        # expected to stop() before and start() after if it was running.
+        self._token = token
+        self._chat_id = str(chat_id)
+        self._offset = None
 
     def start(self) -> None:
         if not self.configured or self.on_command is None:
@@ -696,6 +707,33 @@ def setup_theme(root: tk.Tk) -> None:
         background=[("active", ACCENT_HOVER)],
         foreground=[("active", "#0a0a0a")],
     )
+
+    # Text inputs — dark field, orange border on focus
+    style.configure(
+        "TEntry",
+        fieldbackground=BG_INPUT,
+        foreground=FG,
+        insertcolor=FG,
+        bordercolor=BORDER,
+        lightcolor=BORDER,
+        darkcolor=BORDER,
+        borderwidth=1,
+        padding=(7, 5),
+    )
+    style.map(
+        "TEntry",
+        bordercolor=[("focus", ACCENT)],
+        lightcolor=[("focus", ACCENT)],
+        darkcolor=[("focus", ACCENT)],
+        fieldbackground=[("disabled", BG_SURFACE)],
+        foreground=[("disabled", FG_DIM)],
+    )
+
+    # Section sub-header — small orange caption inside a Settings group
+    style.configure(
+        "SubHeader.TLabel", background=BG, foreground=ACCENT, font=(FONT, 9, "bold")
+    )
+    style.configure("FieldLabel.TLabel", background=BG, foreground=FG_DIM)
 
     # Cards
     style.configure("Card.TFrame", background=BG_CARD)
@@ -1144,10 +1182,10 @@ class FreezeDetectorApp:
         self._preview_photo: tk.PhotoImage | None = None
 
         # --- Settings ---
-        settings = ttk.LabelFrame(main, text="  Settings  ", padding=10)
-        settings.pack(fill=tk.X, padx=12, pady=(0, 8))
+        settings_box = ttk.LabelFrame(main, text="  Settings  ", padding=10)
+        settings_box.pack(fill=tk.X, padx=12, pady=(0, 8))
 
-        row1 = ttk.Frame(settings)
+        row1 = ttk.Frame(settings_box)
         row1.pack(fill=tk.X, pady=3)
         ttk.Label(row1, text="Threshold").pack(side=tk.LEFT)
         self._threshold_var = tk.DoubleVar(value=DEFAULT_THRESHOLD)
@@ -1161,7 +1199,7 @@ class FreezeDetectorApp:
             command=self._on_threshold_changed,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
 
-        row2 = ttk.Frame(settings)
+        row2 = ttk.Frame(settings_box)
         row2.pack(fill=tk.X, pady=3)
         ttk.Label(row2, text="Interval").pack(side=tk.LEFT)
         self._interval_var = tk.IntVar(value=DEFAULT_INTERVAL_MS)
@@ -1175,7 +1213,7 @@ class FreezeDetectorApp:
             command=self._on_interval_changed,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
 
-        row3 = ttk.Frame(settings)
+        row3 = ttk.Frame(settings_box)
         row3.pack(fill=tk.X, pady=3)
         ttk.Label(row3, text="Consec. frames").pack(side=tk.LEFT)
         self._consec_var = tk.IntVar(value=DEFAULT_CONSECUTIVE_FRAMES)
@@ -1211,7 +1249,7 @@ class FreezeDetectorApp:
         ).pack(side=tk.LEFT, padx=4)
         _step_btn("+", 1).pack(side=tk.LEFT)
 
-        row4 = ttk.Frame(settings)
+        row4 = ttk.Frame(settings_box)
         row4.pack(fill=tk.X, pady=(6, 0))
         self._press_enter_var = tk.BooleanVar(value=self._injector.enabled)
         self._press_enter_var.trace_add("write", self._on_press_enter_toggled)
@@ -1221,21 +1259,49 @@ class FreezeDetectorApp:
             variable=self._press_enter_var,
         ).pack(side=tk.LEFT)
 
-        row5 = ttk.Frame(settings)
-        row5.pack(fill=tk.X, pady=(4, 0))
+        # --- Telegram sub-section ---
+        ttk.Separator(settings_box, orient="horizontal").pack(
+            fill=tk.X, pady=(10, 6)
+        )
+        ttk.Label(settings_box, text="TELEGRAM", style="SubHeader.TLabel").pack(
+            anchor=tk.W
+        )
+
+        tg_token_row = ttk.Frame(settings_box)
+        tg_token_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(
+            tg_token_row, text="Token", width=8, style="FieldLabel.TLabel"
+        ).pack(side=tk.LEFT)
+        self._tg_token_var = tk.StringVar()
+        ttk.Entry(tg_token_row, textvariable=self._tg_token_var, show="•").pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+
+        tg_chat_row = ttk.Frame(settings_box)
+        tg_chat_row.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(
+            tg_chat_row, text="Chat ID", width=8, style="FieldLabel.TLabel"
+        ).pack(side=tk.LEFT)
+        self._tg_chat_var = tk.StringVar()
+        ttk.Entry(tg_chat_row, textvariable=self._tg_chat_var).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+        ttk.Button(
+            tg_chat_row, text="Save", command=self._save_telegram_creds
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        row5 = ttk.Frame(settings_box)
+        row5.pack(fill=tk.X, pady=(8, 0))
         self._telegram_var = tk.BooleanVar(value=False)
         self._telegram_var.trace_add("write", self._on_telegram_toggled)
-        tg_check = ttk.Checkbutton(
+        self._tg_check = ttk.Checkbutton(
             row5,
             text="Send zone image to Telegram on freeze",
             variable=self._telegram_var,
         )
-        tg_check.pack(side=tk.LEFT)
+        self._tg_check.pack(side=tk.LEFT)
         if not self._notifier.configured:
-            tg_check.configure(state=tk.DISABLED)
-            ttk.Label(
-                row5, text="(set SCREENSOUND_TELEGRAM_TOKEN / _CHAT_ID)"
-            ).pack(side=tk.LEFT, padx=(8, 0))
+            self._tg_check.configure(state=tk.DISABLED)
 
         # --- Zone list ---
         zones_lf = ttk.LabelFrame(main, text="  Monitored Zones  ", padding=4)
@@ -1297,6 +1363,24 @@ class FreezeDetectorApp:
         for i, state in enumerate(self.states):
             if state.is_frozen and i < len(self.zones):
                 self._injector.inject(bbox=self.zones[i].bbox)
+
+    def _save_telegram_creds(self) -> None:
+        token = self._tg_token_var.get().strip()
+        chat_id = self._tg_chat_var.get().strip()
+        # Guard: only persist a complete pair. An empty/partial Save must never
+        # wipe the creds already loaded from .env.
+        if not token or not chat_id:
+            self.show_status("Telegram: enter both token and Chat ID to save")
+            return
+        save_telegram(token, chat_id)
+        # Apply live: stop the poller, swap creds on both, restart if still on.
+        self._poller.stop()
+        self._notifier.set_credentials(token, chat_id)
+        self._poller.set_credentials(token, chat_id)
+        self._tg_check.configure(state=tk.NORMAL)
+        if self._telegram_var.get():
+            self._poller.start()
+        self.show_status("Telegram credentials saved")
 
     def _on_telegram_toggled(self, *_args) -> None:
         on = self._telegram_var.get()
