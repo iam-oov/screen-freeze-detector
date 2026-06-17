@@ -24,10 +24,11 @@ uv sync
 uv run python freeze_detector.py
 ```
 
-There is no test framework; `test_telegram.py` is a plain assert-based check:
+There is no test framework; the `test_*.py` files are plain assert-based checks:
 
 ```bash
-uv run python test_telegram.py
+uv run python test_domain.py    # freeze state machine, RMS, edge-trigger
+uv run python test_telegram.py  # multipart encoder, chat-id filter
 ```
 
 ## Key files
