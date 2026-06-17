@@ -44,7 +44,7 @@ VENV_DIR="${INSTALL_DIR}/venv"
 echo "Setting up Python virtual environment..."
 python3 -m venv "$VENV_DIR"
 "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
-"${VENV_DIR}/bin/pip" install --quiet Pillow pynput pydantic-settings
+"${VENV_DIR}/bin/pip" install --quiet Pillow pynput
 
 echo "ScreenSound installed successfully."
 EOF

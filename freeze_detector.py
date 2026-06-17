@@ -296,21 +296,15 @@ class XdotoolEnterInjector:
             )
         except (FileNotFoundError, subprocess.CalledProcessError):
             return None
-        x, y = None, None
-        for line in result.stdout.splitlines():
-            if line.startswith("X="):
-                try:
-                    x = int(line[2:])
-                except ValueError:
-                    return None
-            elif line.startswith("Y="):
-                try:
-                    y = int(line[2:])
-                except ValueError:
-                    return None
-        if x is None or y is None:
+        env = dict(
+            line.split("=", 1)
+            for line in result.stdout.splitlines()
+            if "=" in line
+        )
+        try:
+            return int(env["X"]), int(env["Y"])
+        except (KeyError, ValueError):
             return None
-        return (x, y)
 
 
 class PynputHotkeys:

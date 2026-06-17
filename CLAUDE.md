@@ -14,7 +14,7 @@ Screen Freeze Detector (screensound) — a small Python/tkinter app that monitor
 - pynput for global hotkeys (F11/F12)
 - `aplay` for sound playback (WAV generated at runtime with `wave`/`struct`)
 - `xdotool` (optional) for synthetic input on freeze — Enter, or typing a Telegram reply. X11 only.
-- `pydantic-settings` for typed configuration (env / `.env`)
+- `.env` / environment variables for configuration — plain stdlib, no config dependency
 - Telegram Bot API over stdlib `urllib` (no HTTP dependency)
 
 ## Run
@@ -24,7 +24,7 @@ uv sync
 uv run python freeze_detector.py
 ```
 
-`uv sync` builds and installs the project into the venv (it is a package now — dynamic version, see Version management). There is no test framework; `test_telegram.py` is a plain assert-based check:
+There is no test framework; `test_telegram.py` is a plain assert-based check:
 
 ```bash
 uv run python test_telegram.py
@@ -33,11 +33,11 @@ uv run python test_telegram.py
 ## Key files
 
 - `freeze_detector.py` — the application (UI, domain, all infrastructure adapters, `main()`)
-- `config.py` — pydantic-settings `Settings`; the single entry point for env / `.env` values, imported by `freeze_detector.py`
+- `config.py` — plain-stdlib config: loads env vars + a local `.env`, exposes a `settings` namespace. The single entry point for config, imported by `freeze_detector.py`
 - `VERSION` — plain-text single source of truth for the version (see Version management)
 - `.env.example` — template for the optional Telegram credentials (`.env` is gitignored)
 - `build_deb.sh` — builds the `.deb` package for Ubuntu/Debian
-- `pyproject.toml` — uv project; deps (Pillow, pynput, pydantic-settings) + hatchling dynamic version
+- `pyproject.toml` — uv project; deps (Pillow, pynput). Static `version` field (cosmetic; the `VERSION` file is the real source — see Version management)
 - `.python-version` — pinned to 3.12 (3.13 has an XCB/X11 bug with tkinter)
 - `test_telegram.py` — assert checks for the multipart encoder and the Telegram chat-id filter
 
@@ -56,7 +56,7 @@ SOLID. Protocols define abstractions; concrete implementations are injected in `
 
 ## Configuration & secrets
 
-- `config.py` exposes a `settings` singleton (`pydantic-settings`, env prefix `SCREENSOUND_`, auto-loads `.env`). All fields are optional — it is a typed container, not a gatekeeper.
+- `config.py` loads a local `.env` (a tiny stdlib parser; real environment variables win over `.env`) and exposes a `settings` namespace with `telegram_token` / `telegram_chat_id`. Both optional.
 - Telegram credentials: `SCREENSOUND_TELEGRAM_TOKEN`, `SCREENSOUND_TELEGRAM_CHAT_ID`. Copy `.env.example` → `.env` and fill them in. **Never commit `.env` or hardcode a token** — `.env` is gitignored.
 - Telegram is opt-in via a Settings checkbox, disabled until both token and chat_id are set. The poller ignores any message not from the configured `chat_id` (so nobody else with the bot can type on this screen).
 - Known limitation: the installed `.deb` launcher does not pass env vars, so Telegram config currently only works when run from a shell with `.env`/env present.
@@ -77,13 +77,12 @@ Configurable values live at the top of `freeze_detector.py` as module-level cons
 
 ## Version management
 
-The `VERSION` file (plain text, e.g. `1.3.2`) is the single source of truth, read by three consumers:
+The `VERSION` file (plain text, e.g. `1.3.2`) is the source of truth for what ships and runs:
 
 - `freeze_detector.py` reads it at runtime (`Path(__file__).parent / "VERSION"`, with a `0.0.0` fallback) and shows it in the window title.
 - `build_deb.sh` reads it with `$(< VERSION)`.
-- `pyproject.toml` declares `dynamic = ["version"]`; hatchling reads it (`[tool.hatch.version] path = "VERSION"`).
 
-To bump the version, edit the `VERSION` file only. `build_deb.sh` ships `VERSION` alongside `freeze_detector.py` and `config.py`.
+To bump, edit the `VERSION` file. `build_deb.sh` ships `VERSION` alongside `freeze_detector.py` and `config.py`. `pyproject.toml` has its own static `version` field — it is cosmetic (nothing reads it; the project isn't published as a wheel), so it is not wired to `VERSION` and may lag.
 
 ## Build .deb
 
@@ -91,7 +90,7 @@ To bump the version, edit the `VERSION` file only. `build_deb.sh` ships `VERSION
 bash build_deb.sh
 ```
 
-Reads `VERSION`, creates the package under `/opt/screensound/`, copies `freeze_detector.py`, `config.py`, and `VERSION`, and sets up a venv installing Pillow, pynput, and pydantic-settings in `postinst`.
+Reads `VERSION`, creates the package under `/opt/screensound/`, copies `freeze_detector.py`, `config.py`, and `VERSION`, and sets up a venv installing Pillow and pynput in `postinst`.
 
 ## Style
 

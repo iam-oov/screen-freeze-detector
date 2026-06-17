@@ -26,7 +26,7 @@ Monitors specific screen zones and reacts when any zone freezes (consecutive cap
 - `xdotool` (only for the auto-Enter and Telegram-typing features)
 - A Telegram bot token + chat id (only for the Telegram feature — see below)
 
-Python deps (Pillow, pynput, pydantic-settings) are handled by `uv` / the `.deb` installer.
+Python deps (Pillow, pynput) are handled by `uv` / the `.deb` installer.
 
 ## Quick start
 
@@ -119,7 +119,7 @@ Telegram credentials come from the environment / `.env` (see `.env.example`):
 | `SCREENSOUND_TELEGRAM_TOKEN`   | Bot token from BotFather |
 | `SCREENSOUND_TELEGRAM_CHAT_ID` | Your chat id             |
 
-The version comes from the `VERSION` file — the single source of truth for the window title, `build_deb.sh`, and `pyproject.toml`'s dynamic version. To bump it, edit `VERSION`.
+The version comes from the `VERSION` file — the source for the window title and `build_deb.sh`. To bump it, edit `VERSION`. (`pyproject.toml` has a separate static `version` field that nothing consumes.)
 
 ## Architecture
 
@@ -129,7 +129,7 @@ The version comes from the `VERSION` file — the single source of truth for the
 - **Implementations**: `ScrotCapturer`, `AplaySound`, `PynputHotkeys`, `RMSComparator`, `XdotoolEnterInjector` (Enter + `type_text`), `TelegramNotifier` (send image), `TelegramPoller` (receive text)
 - **Domain**: `ZoneConfig`, `ZoneState`, `FreezeMonitor`
 - **UI**: `ZoneSelector`, `ZoneMonitorWidget`, `FreezeDetectorApp`
-- **Config**: `config.Settings` (pydantic-settings)
+- **Config**: `config.settings` (env + `.env`, stdlib)
 - **Composition root**: `main()` wires all dependencies
 
 ## License

@@ -1,23 +1,31 @@
 """Application configuration.
 
-Single entry point for environment / .env settings consumed by
-freeze_detector.py. Every value is optional — this is a typed container,
-not a gatekeeper.
+Single entry point for env / .env values consumed by freeze_detector.py.
+Plain stdlib — every value is optional, read from the environment (and a local
+.env if present, which never overrides a real environment variable).
 """
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+from pathlib import Path
+from types import SimpleNamespace
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="SCREENSOUND_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+def _load_dotenv(path: Path) -> None:
+    try:
+        text = path.read_text()
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
-    telegram_token: str = ""
-    telegram_chat_id: str = ""
 
+_load_dotenv(Path(__file__).parent / ".env")
 
-settings = Settings()
+settings = SimpleNamespace(
+    telegram_token=os.environ.get("SCREENSOUND_TELEGRAM_TOKEN", ""),
+    telegram_chat_id=os.environ.get("SCREENSOUND_TELEGRAM_CHAT_ID", ""),
+)
