@@ -1297,8 +1297,10 @@ class FreezeDetectorApp:
                 self._notifier.notify_frozen(state.prev_image, self.zones[i].name)
 
     def handle_command(self, text: str) -> None:
-        if self._last_frozen_bbox is None:
-            self.show_status("Telegram reply ignored: no frozen zone yet")
+        # Only type while actively monitoring and a zone is currently frozen —
+        # the poller runs off the Telegram toggle, independent of monitoring.
+        if not self.is_monitoring or self._last_frozen_bbox is None:
+            self.show_status("Telegram reply ignored: no frozen zone right now")
             return
         self._injector.type_text(text, self._last_frozen_bbox)
         self.show_status(f"Typed into last frozen zone: {text[:40]}")
@@ -1409,6 +1411,7 @@ class FreezeDetectorApp:
         self.widgets.clear()
         self.zones.clear()
         self.states.clear()
+        self._last_frozen_bbox = None
 
     def _remove_zone(self, idx: int) -> None:
         if 0 <= idx < len(self.zones):
@@ -1416,6 +1419,10 @@ class FreezeDetectorApp:
             del self.zones[idx]
             del self.states[idx]
             del self.widgets[idx]
+
+        # Zones changed — drop the cached target; the monitor re-fills it next
+        # cycle if a zone is still frozen.
+        self._last_frozen_bbox = None
 
         if not self.zones:
             self._empty_label.pack(fill=tk.X)
@@ -1448,6 +1455,7 @@ class FreezeDetectorApp:
             self._after_id = None
         for state in self.states:
             state.reset()
+        self._last_frozen_bbox = None
         self._monitor_btn.configure(text="Start (F11)", style="TButton")
         self._select_btn.configure(state=tk.NORMAL)
         self._status_var.set("Monitoring stopped")
