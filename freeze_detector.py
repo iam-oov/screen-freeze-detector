@@ -1179,21 +1179,37 @@ class FreezeDetectorApp:
         row3.pack(fill=tk.X, pady=3)
         ttk.Label(row3, text="Consec. frames").pack(side=tk.LEFT)
         self._consec_var = tk.IntVar(value=DEFAULT_CONSECUTIVE_FRAMES)
-        tk.Spinbox(
-            row3,
-            from_=1,
-            to=10,
+        stepper = ttk.Frame(row3)
+        stepper.pack(side=tk.RIGHT)
+
+        def _step_btn(text: str, delta: int) -> tk.Button:
+            return tk.Button(
+                stepper,
+                text=text,
+                command=lambda: self._step_consec(delta),
+                bg=BG_INPUT,
+                fg=FG,
+                activebackground=BG_SURFACE,
+                activeforeground=ACCENT,
+                relief=tk.FLAT,
+                bd=0,
+                highlightthickness=0,
+                width=2,
+                font=(FONT, 13, "bold"),
+                cursor="hand2",
+            )
+
+        _step_btn("−", -1).pack(side=tk.LEFT)
+        ttk.Label(
+            stepper,
             textvariable=self._consec_var,
-            width=4,
-            bg=BG_INPUT,
-            fg=FG,
-            buttonbackground=BG_SURFACE,
-            insertbackground=FG,
-            relief=tk.FLAT,
-            highlightthickness=1,
-            highlightcolor=ACCENT,
-            highlightbackground=BORDER,
-        ).pack(side=tk.RIGHT)
+            width=2,
+            anchor=tk.CENTER,
+            background=BG,
+            foreground=FG_BRIGHT,
+            font=(FONT, 11, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        _step_btn("+", 1).pack(side=tk.LEFT)
 
         row4 = ttk.Frame(settings)
         row4.pack(fill=tk.X, pady=(6, 0))
@@ -1265,6 +1281,9 @@ class FreezeDetectorApp:
         v = int(float(self._interval_var.get()))
         self._interval_var.set(v)
         self._interval_label.configure(text=f"{v}ms")
+
+    def _step_consec(self, delta: int) -> None:
+        self._consec_var.set(max(1, min(10, self._consec_var.get() + delta)))
 
     def _on_press_enter_toggled(self, *_args) -> None:
         on = self._press_enter_var.get()
