@@ -9,6 +9,7 @@ import tempfile
 import time
 import tkinter as tk
 from dataclasses import dataclass
+from pathlib import Path
 from tkinter import ttk
 from typing import Protocol
 import wave
@@ -26,7 +27,10 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "1.3.0"
+try:
+    VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
+except OSError:
+    VERSION = "0.0.0"  # fallback si el archivo VERSION no se copió junto al script
 
 SELECTION_COLOR = "#39FF14"
 
@@ -309,6 +313,7 @@ class ZoneConfig:
     bbox: tuple[int, int, int, int]
     name: str
     enabled: bool = True
+    sound_enabled: bool = True
 
 
 @dataclass
@@ -372,7 +377,8 @@ class FreezeMonitor:
                 was_frozen = state.is_frozen
                 state.update(similarity, threshold, consec_required)
                 if state.is_frozen:
-                    self._sound.play()
+                    if zone.sound_enabled:
+                        self._sound.play()
                     if not was_frozen:
                         self._injector.inject(bbox=zone.bbox)
 
@@ -809,15 +815,27 @@ class ZoneMonitorWidget(ttk.Frame):
         )
         self._frozen_label.pack(anchor=tk.W, pady=(2, 4))
 
-        # Enabled
+        # Toggles
+        toggles = ttk.Frame(info, style="Card.TFrame")
+        toggles.pack(anchor=tk.W)
+
         self._enabled_var = tk.BooleanVar(value=zone.enabled)
         self._enabled_var.trace_add("write", self._on_enabled_changed)
         ttk.Checkbutton(
-            info, text="Enabled", variable=self._enabled_var, style="Card.TCheckbutton"
-        ).pack(anchor=tk.W)
+            toggles, text="Enabled", variable=self._enabled_var, style="Card.TCheckbutton"
+        ).pack(side=tk.LEFT)
+
+        self._sound_var = tk.BooleanVar(value=zone.sound_enabled)
+        self._sound_var.trace_add("write", self._on_sound_changed)
+        ttk.Checkbutton(
+            toggles, text="Sound", variable=self._sound_var, style="Card.TCheckbutton"
+        ).pack(side=tk.LEFT, padx=(12, 0))
 
     def _on_enabled_changed(self, *_args) -> None:
         self._zone.enabled = self._enabled_var.get()
+
+    def _on_sound_changed(self, *_args) -> None:
+        self._zone.sound_enabled = self._sound_var.get()
 
     def update_display(
         self, state: ZoneState, image: Image.Image | None = None

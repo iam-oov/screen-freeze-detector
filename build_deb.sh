@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="screensound"
-VERSION=$(python3 -c "import re; print(re.search(r'VERSION\s*=\s*\"(.+?)\"', open('freeze_detector.py').read()).group(1))")
+VERSION=$(< VERSION)
 ARCH="amd64"
 PKG_DIR="${APP_NAME}_${VERSION}_${ARCH}"
 
@@ -58,8 +58,9 @@ rm -rf /opt/screensound/venv
 EOF
 chmod 755 "${PKG_DIR}/DEBIAN/prerm"
 
-# --- Application file ---
+# --- Application files ---
 cp freeze_detector.py "${PKG_DIR}/opt/${APP_NAME}/freeze_detector.py"
+cp VERSION "${PKG_DIR}/opt/${APP_NAME}/VERSION"
 
 # --- Launcher script ---
 cat > "${PKG_DIR}/usr/bin/${APP_NAME}" << 'EOF'
