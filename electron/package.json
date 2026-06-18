@@ -12,5 +12,8 @@
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "@nut-tree-fork/libnut"]
   }
 }
