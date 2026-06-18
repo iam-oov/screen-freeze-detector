@@ -70,8 +70,8 @@ The UI is a light-theme single window: a header (Start/Stop · **F9/F10**), a
 collapsible **Configuration** panel (Detection sliders + Telegram), and a
 **Watched zones** table. (Hotkeys + detection defaults live in `constants.js`.)
 
-1. Click **Select zones** → the app hides itself and opens a **fullscreen
-   overlay** of your screen. Drag rectangles (right-click undo, **Enter**
+1. Click **Select zones** (or press **F8**) → the app hides itself and opens a
+   **fullscreen overlay** of your screen. Drag rectangles (right-click undo, **Enter**
    confirm, **Esc** cancel). Each becomes a row with a thumbnail, similarity bar,
    state pill, frozen count, and per-zone Active + Sound toggles. **Show zones**
    re-opens the overlay read-only.

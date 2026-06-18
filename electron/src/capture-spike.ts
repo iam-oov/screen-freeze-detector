@@ -51,6 +51,7 @@ const defocusStatus = $("defocusStatus");
 const tgEl = $("tg");
 const zCount = $("zCount");
 const selectBtn = $("selectBtn") as HTMLButtonElement;
+const selectLbl = $("selectLbl");
 const showBtn = $("showBtn") as HTMLButtonElement;
 const zonesEl = $("zones");
 const footStatus = $("footStatus");
@@ -340,10 +341,18 @@ function stopMonitoring(): void {
 }
 
 toggleBtn.addEventListener("click", () => (running ? stopMonitoring() : void startMonitoring()));
-window.spike.onHotkey((which: string) => (which === "start" ? void startMonitoring() : stopMonitoring()));
+window.spike.onHotkey((which: string) => {
+  if (which === "start") void startMonitoring();
+  else if (which === "stop") stopMonitoring();
+  else if (which === "select") selectZones();
+});
 
 // --- overlay-driven zone selection ----------------------------------------
+let overlayBusy = false; // guards against stacking overlays (e.g. F8 spam)
+
 async function withScreenshot<T>(use: (shot: { dataURL: string; frameW: number; frameH: number; frame: PixelFrame }) => Promise<T>): Promise<T | null> {
+  if (overlayBusy) return null;
+  overlayBusy = true;
   try {
     const cap = await ensureCapture();
     // Hide our window FIRST, then let the live capture catch up, so the
@@ -358,10 +367,11 @@ async function withScreenshot<T>(use: (shot: { dataURL: string; frameW: number; 
     return null;
   } finally {
     await window.spike.setWindowVisible(true);
+    overlayBusy = false;
   }
 }
 
-selectBtn.addEventListener("click", () => {
+function selectZones(): void {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
       mode: "select",
@@ -371,7 +381,9 @@ selectBtn.addEventListener("click", () => {
     });
     if (res && Array.isArray(res.zones)) for (const b of res.zones) addZone(b, shot.frame);
   });
-});
+}
+
+selectBtn.addEventListener("click", selectZones);
 
 showBtn.addEventListener("click", () => {
   void withScreenshot(async (shot) => {
@@ -462,6 +474,7 @@ window.spike.getTelegramConfig().then(({ token, chatId }: { token: string; chatI
   tgChat.value = chatId;
   applyCreds(token, chatId);
 });
+selectLbl.textContent = `Select zones · ${HOTKEYS.select}`;
 refreshDetectionLabels();
 refreshEmpty();
 setRunning(false);

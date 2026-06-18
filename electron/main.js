@@ -96,9 +96,10 @@ function createWindow() {
   });
   mainWin.loadFile(path.join(__dirname, "capture.html"));
 
-  // Global start/stop monitoring hotkeys (see constants.js).
+  // Global hotkeys (see constants.js).
   globalShortcut.register(HOTKEYS.start, () => mainWin.webContents.send("hotkey", "start"));
   globalShortcut.register(HOTKEYS.stop, () => mainWin.webContents.send("hotkey", "stop"));
+  globalShortcut.register(HOTKEYS.select, () => mainWin.webContents.send("hotkey", "select"));
   createTray(mainWin);
   // Closing the window quits the app (window-all-closed -> app.quit()). The tray
   // can still hide/show the window while it's open.
