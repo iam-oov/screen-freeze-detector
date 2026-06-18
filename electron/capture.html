@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>screensound — capture + compare spike</title>
+    <style>
+      :root {
+        --bg: #141422;
+        --surface: #1c1c30;
+        --accent: #e8651a;
+        --text: #e8e8f0;
+        --muted: #8888a0;
+        --ok: #3ecf6a;
+        --err: #e05050;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 20px;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg); color: var(--text);
+      }
+      h1 { font-size: 16px; margin: 0 0 4px; }
+      p.sub { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+      button {
+        padding: 11px 16px; background: var(--accent); border: none;
+        border-radius: 6px; color: #fff; font-size: 14px; font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: default; }
+      video { width: 100%; margin-top: 16px; border-radius: 6px; background: #000; }
+      .readout {
+        margin-top: 16px; padding: 14px; background: var(--surface);
+        border-radius: 6px; font-family: ui-monospace, monospace; font-size: 13px;
+      }
+      .readout div { margin: 4px 0; }
+      #state.frozen { color: var(--err); font-weight: 700; }
+      #state.ok { color: var(--ok); }
+      #err { color: var(--err); }
+    </style>
+  </head>
+  <body>
+    <h1>capture + compare spike</h1>
+    <p class="sub">
+      Captures the screen, compares a centered region frame-to-frame using the
+      real domain (RMSComparator + ZoneState). Hold the screen still → it
+      FREEZES; move a window or play a video → it breaks.
+    </p>
+
+    <button id="start">Start screen capture</button>
+    <video id="video" autoplay muted></video>
+
+    <div class="readout">
+      <div>similarity: <span id="sim">—</span></div>
+      <div>state: <span id="state" class="ok">idle</span></div>
+      <div id="size" style="color: var(--muted)">—</div>
+      <div id="err"></div>
+    </div>
+
+    <script src="capture-spike.js"></script>
+  </body>
+</html>

@@ -8,7 +8,10 @@
 // migration is not worth it.
 
 const path = require("path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, desktopCapturer, session } = require("electron");
+
+// SPIKE=capture loads the step-3 capture spike; otherwise the injection spike.
+const CAPTURE = process.env.SPIKE === "capture";
 
 // Loaded lazily so the window still opens (and can report the failure) when the
 // native module is missing or failed to build.
@@ -22,16 +25,27 @@ try {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 520,
-    height: 560,
-    resizable: false,
+    width: CAPTURE ? 720 : 520,
+    height: CAPTURE ? 720 : 560,
+    resizable: true,
     backgroundColor: "#141422",
     webPreferences: { preload: path.join(__dirname, "preload.js") },
   });
-  win.loadFile(path.join(__dirname, "index.html"));
+  win.loadFile(path.join(__dirname, CAPTURE ? "capture.html" : "index.html"));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Auto-select the screen so the capture spike's getDisplayMedia() resolves
+  // without popping a source picker. macOS still gates the first capture behind
+  // the Screen Recording permission prompt.
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
+      callback(sources.length ? { video: sources[0] } : {});
+    });
+  });
+  createWindow();
+});
+
 app.on("window-all-closed", () => app.quit());
 
 // The renderer runs the visible countdown, then calls this. We just do the

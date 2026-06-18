@@ -71,8 +71,24 @@ You may need to quit and relaunch after granting.
 Log shows `RESULT: nut.js injection WORKS ✅` → the migration is viable.
 Log shows `FAILED ❌` → read the error; usually missing Accessibility permission.
 
-## If it works
+## Migration progress
 
-Next step is porting the pure domain (freeze state machine, RMS, edge-trigger)
-to TypeScript — it has no OS dependencies and ports 1:1. See the migration order
-discussed with the team.
+- **Step 1 (input injection)** — ✅ confirmed working on macOS (this spike).
+- **Step 2 (pure domain → TS)** — ✅ `src/domain.ts` + `src/domain.test.ts`.
+  Run: `pnpm test` (11 tests).
+- **Step 3 (capture + compare loop)** — capture the screen via `desktopCapturer`
+  and run the real domain on the pixels:
+
+  ```bash
+  pnpm start:capture
+  ```
+
+  Click **Start screen capture**. Hold the screen still → it FREEZES; move a
+  window or play a video → it breaks. On macOS the first capture prompts for
+  **Screen Recording** permission (System Settings → Privacy & Security).
+
+  Note: capture resolution is physical pixels — on a Retina Mac that's 2× the
+  logical screen size, so real zone-coordinate mapping must scale for DPI. The
+  spike sidesteps this by comparing a centered fraction of the captured frame.
+
+Next: sound + global hotkeys, then Telegram, then the real UI + zone selector.
