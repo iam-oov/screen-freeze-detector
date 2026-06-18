@@ -250,6 +250,7 @@ function activeCount(): number {
 
 function refreshCounts(): void {
   zCount.textContent = `${activeCount()} active`;
+  showBtn.disabled = zones.length <= 1; // only useful with more than one zone
   footStatus.textContent = running
     ? `Watching ${activeCount()} of ${zones.length} zones`
     : zones.length
@@ -378,6 +379,9 @@ function selectZones(): void {
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
+      // Show the already-marked zones so re-selecting is additive (the overlay
+      // numbers new zones after these and only returns the NEW ones).
+      zones: zones.map((z) => z.config.bbox),
     });
     if (res && Array.isArray(res.zones)) for (const b of res.zones) addZone(b, shot.frame);
   });
