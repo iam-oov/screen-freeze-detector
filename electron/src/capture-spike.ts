@@ -40,7 +40,6 @@ const intVal = $("intVal");
 const consecEl = $("consec") as HTMLInputElement;
 const consecMinus = $("consecMinus") as HTMLButtonElement;
 const consecPlus = $("consecPlus") as HTMLButtonElement;
-const injectChk = $("inject") as HTMLInputElement;
 const tgBadge = $("tgBadge");
 const tgToken = $("tgToken") as HTMLInputElement;
 const tgChat = $("tgChat") as HTMLInputElement;
@@ -63,6 +62,8 @@ const SVG_SOUND_OFF =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>';
 const SVG_TRASH =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+const SVG_ENTER =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 10 4 15l5 5"/><path d="M4 15h11a5 5 0 0 0 5-5V4"/></svg>';
 
 // --- state -----------------------------------------------------------------
 interface Zone {
@@ -109,7 +110,8 @@ function paintRange(el: HTMLInputElement): void {
 
 function refreshDetectionLabels(): void {
   thrVal.textContent = `${(threshold() * 100).toFixed(1)}%`;
-  intVal.textContent = `${intervalMs()} ms`;
+  const s = intervalMs() / 1000;
+  intVal.textContent = `${Number.isInteger(s) ? s : s.toFixed(1)} s`;
   paintRange(thresholdEl);
   paintRange(intervalEl);
 }
@@ -197,7 +199,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
     '<span class="zfrozen c-center">0</span>' +
     '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" checked /><span class="slider"></span></label></span>' +
-    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
+    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
 
   const q = <T extends Element>(sel: string): T => row.querySelector(sel) as T;
   const zone: Zone = {
@@ -222,11 +224,27 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     row.style.opacity = config.enabled ? "1" : "0.5";
     refreshCounts();
   });
+  // Per-zone "Press Enter on freeze" — opt-in, off by default.
+  const ent = q<HTMLButtonElement>(".ent");
+  const paintEnter = (): void => {
+    ent.style.opacity = config.injectEnabled ? "1" : "0.4";
+    ent.style.color = config.injectEnabled ? "var(--accent)" : "";
+  };
+  paintEnter();
+  ent.addEventListener("click", () => {
+    config.injectEnabled = !config.injectEnabled;
+    paintEnter();
+  });
   const snd = q<HTMLButtonElement>(".snd");
+  const paintSound = (): void => {
+    snd.innerHTML = config.soundEnabled ? SVG_SOUND : SVG_SOUND_OFF;
+    snd.style.color = config.soundEnabled ? "var(--accent)" : "";
+    snd.style.opacity = config.soundEnabled ? "1" : "0.4";
+  };
+  paintSound(); // soundEnabled defaults true -> pink/active
   snd.addEventListener("click", () => {
     config.soundEnabled = !config.soundEnabled;
-    snd.innerHTML = config.soundEnabled ? SVG_SOUND : SVG_SOUND_OFF;
-    snd.style.color = config.soundEnabled ? "" : "var(--frozen)";
+    paintSound();
   });
   q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
 
@@ -260,8 +278,9 @@ function refreshCounts(): void {
 
 // --- monitoring loop -------------------------------------------------------
 const injector = {
+  // Gating is per-zone in the domain (zone.injectEnabled); here we just inject.
   inject(bbox?: Bbox): void {
-    if (!injectChk.checked || !bbox || !capturer || capturer.frameWidth === 0) return;
+    if (!bbox || !capturer || capturer.frameWidth === 0) return;
     const { x, y } = bboxCenterToScreen(
       bbox,
       capturer.frameWidth,

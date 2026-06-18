@@ -147,7 +147,8 @@ test("freeze_monitor inject and notify are edge-triggered", () => {
   const inj = new FakeInjector();
   const notifier = new FakeNotifier();
   const monitor = new FreezeMonitor(new FakeCapturer(), new AlwaysFrozenComparator(), sound, inj, notifier);
-  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1")];
+  // injectEnabled=true so Enter fires (it is per-zone and off by default).
+  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1", true, true, true)];
   const states = [new ZoneState()];
 
   // 4 ticks, consec=2: tick1 seeds prevImage, tick2 count=1, tick3 freezes
@@ -159,12 +160,28 @@ test("freeze_monitor inject and notify are edge-triggered", () => {
   assert.deepEqual(notifier.sent, ["Zone 1"]);
 });
 
+test("freeze_monitor respects per-zone inject toggle", () => {
+  const sound = new FakeSound();
+  const inj = new FakeInjector();
+  const notifier = new FakeNotifier();
+  const monitor = new FreezeMonitor(new FakeCapturer(), new AlwaysFrozenComparator(), sound, inj, notifier);
+  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1")]; // injectEnabled defaults false
+  const states = [new ZoneState()];
+
+  run(monitor, zones, states, 4, 2);
+
+  assert.deepEqual(inj.injected, []); // Enter off -> no injection...
+  assert.equal(sound.plays, 2); // ...but sound + notify still fire
+  assert.deepEqual(notifier.sent, ["Zone 1"]);
+});
+
 test("freeze_monitor respects per-zone sound toggle", () => {
   const sound = new FakeSound();
   const inj = new FakeInjector();
   const notifier = new FakeNotifier();
   const monitor = new FreezeMonitor(new FakeCapturer(), new AlwaysFrozenComparator(), sound, inj, notifier);
-  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1", true, false)]; // soundEnabled=false
+  // soundEnabled=false, injectEnabled=true
+  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1", true, false, true)];
   const states = [new ZoneState()];
 
   run(monitor, zones, states, 4, 2);

@@ -19,12 +19,14 @@ export class ZoneConfig {
   name: string;
   enabled: boolean;
   soundEnabled: boolean;
+  injectEnabled: boolean;
 
-  constructor(bbox: Bbox, name: string, enabled = true, soundEnabled = true) {
+  constructor(bbox: Bbox, name: string, enabled = true, soundEnabled = true, injectEnabled = false) {
     this.bbox = bbox;
     this.name = name;
     this.enabled = enabled;
     this.soundEnabled = soundEnabled;
+    this.injectEnabled = injectEnabled;
   }
 }
 
@@ -157,7 +159,10 @@ export class FreezeMonitor {
             this.sound.play();
           }
           if (!wasFrozen) {
-            this.injector.inject(zone.bbox);
+            // Enter is per-zone and opt-in (zone.injectEnabled), like sound.
+            if (zone.injectEnabled) {
+              this.injector.inject(zone.bbox);
+            }
             this.notifier.notifyFrozen(newImg, zone.name);
           }
         }

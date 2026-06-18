@@ -68,7 +68,10 @@
         display: flex; align-items: center; justify-content: space-between;
         padding: 13px 20px; cursor: pointer; user-select: none;
       }
-      .chevron { color: var(--muted); transition: transform 0.15s; }
+      .cfg-title { display: flex; align-items: center; gap: 8px; }
+      .cfg-gear { color: var(--muted); flex: 0 0 auto; }
+      .cfg-sub { font-size: 11px; color: var(--muted); }
+      .chevron { color: var(--muted); transition: transform 0.15s; flex: 0 0 auto; }
       .cfg.collapsed .chevron { transform: rotate(180deg); }
       .cfg.collapsed .cfg-body { display: none; }
       .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; }
@@ -167,7 +170,7 @@
 
       .zhead, .zrow {
         display: grid;
-        grid-template-columns: 1.7fr 70px 1.7fr 96px 78px 62px 70px;
+        grid-template-columns: 1.6fr 68px 1.5fr 90px 70px 58px 92px;
         align-items: center; gap: 10px;
       }
       .zhead {
@@ -241,8 +244,12 @@
 
     <section class="card cfg" id="cfg">
       <div class="cfg-head" id="cfgHeader">
-        <div><strong>Configuration</strong> &nbsp;<span class="muted">Detection &amp; Telegram</span></div>
-        <span id="cfgChevron" class="chevron">⌃</span>
+        <div class="cfg-title">
+          <svg class="cfg-gear" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09A1.65 1.65 0 0 0 10 4.6V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <strong>Configuration</strong>
+          <span class="cfg-sub">Detection &amp; Telegram</span>
+        </div>
+        <svg id="cfgChevron" class="chevron" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 15 6-6 6 6"/></svg>
       </div>
       <div class="cfg-body" id="cfgBody">
         <div class="cfg-grid">
@@ -266,10 +273,6 @@
                 <input id="consec" type="text" inputmode="numeric" value="3" readonly />
                 <button id="consecPlus" type="button">+</button>
               </div>
-            </div>
-            <div class="field field-inline">
-              <label for="inject">Press Enter on freeze</label>
-              <label class="switch"><input type="checkbox" id="inject" /><span class="slider"></span></label>
             </div>
           </div>
 
