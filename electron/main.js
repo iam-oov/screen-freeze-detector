@@ -17,8 +17,30 @@ const {
   globalShortcut,
 } = require("electron");
 
-// SPIKE=capture loads the step-3 capture spike; otherwise the injection spike.
-const CAPTURE = process.env.SPIKE === "capture";
+// SPIKE selects which spike window to open: capture | telegram | inject (default).
+const SPIKE = process.env.SPIKE || "inject";
+const CAPTURE = SPIKE === "capture";
+const PAGE = { capture: "capture.html", telegram: "telegram.html" }[SPIKE] || "index.html";
+const BIG = SPIKE !== "inject";
+
+// Telegram creds for the telegram spike — real env vars win over electron/.env
+// (mirrors the Python config.py loader; electron/.env is gitignored).
+function loadEnvFile(p) {
+  try {
+    for (const line of require("fs").readFileSync(p, "utf8").split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || !t.includes("=")) continue;
+      const eq = t.indexOf("=");
+      const k = t.slice(0, eq).trim();
+      if (k in process.env) continue;
+      process.env[k] = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    }
+  } catch {
+    /* no .env — fine, creds can be typed in the UI */
+  }
+}
+loadEnvFile(path.join(__dirname, ".env")); // local override wins (first-set)
+loadEnvFile(path.join(__dirname, "..", ".env")); // then the Python repo's .env
 
 // Loaded lazily so the window still opens (and can report the failure) when the
 // native module is missing or failed to build.
@@ -32,8 +54,8 @@ try {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: CAPTURE ? 720 : 520,
-    height: CAPTURE ? 720 : 560,
+    width: BIG ? 720 : 520,
+    height: BIG ? 720 : 560,
     resizable: true,
     backgroundColor: "#141422",
     webPreferences: {
@@ -43,7 +65,7 @@ function createWindow() {
       autoplayPolicy: "no-user-gesture-required",
     },
   });
-  win.loadFile(path.join(__dirname, CAPTURE ? "capture.html" : "index.html"));
+  win.loadFile(path.join(__dirname, PAGE));
 
   if (CAPTURE) {
     // Global F9/F10 start/stop monitoring.
@@ -70,6 +92,12 @@ app.on("window-all-closed", () => app.quit());
 // The renderer runs the visible countdown, then calls this. We just do the
 // injection and report each step back. Mirrors screensound's _send() flow:
 // move to the target point -> click (steal focus) -> type text -> press Enter.
+// Telegram creds for the telegram spike, prefilled into its inputs.
+ipcMain.handle("get-telegram-config", () => ({
+  token: process.env.SCREENSOUND_TELEGRAM_TOKEN || "",
+  chatId: process.env.SCREENSOUND_TELEGRAM_CHAT_ID || "",
+}));
+
 ipcMain.handle("run-injection", async (_evt, { x, y, text }) => {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || "nut.js not loaded" };

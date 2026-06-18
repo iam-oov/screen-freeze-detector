@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>screensound — Telegram spike</title>
+    <style>
+      :root {
+        --bg: #141422;
+        --surface: #1c1c30;
+        --input: #2a2a44;
+        --accent: #e8651a;
+        --text: #e8e8f0;
+        --muted: #8888a0;
+        --ok: #3ecf6a;
+        --err: #e05050;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 20px;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg); color: var(--text);
+      }
+      h1 { font-size: 16px; margin: 0 0 4px; }
+      p.sub { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+      input {
+        width: 100%; padding: 8px 10px; background: var(--input);
+        border: 1px solid #34345a; border-radius: 6px; color: var(--text); font-size: 13px;
+      }
+      .row { display: flex; gap: 10px; margin-top: 16px; }
+      button {
+        flex: 1; padding: 11px; background: var(--accent); border: none;
+        border-radius: 6px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+      }
+      #status { margin-top: 12px; font-size: 12px; color: var(--muted); }
+      #messages {
+        margin-top: 12px; padding: 12px; background: var(--surface); border-radius: 6px;
+        font-family: ui-monospace, monospace; font-size: 12px; min-height: 120px; white-space: pre-wrap;
+      }
+      .ok { color: var(--ok); }
+      .err { color: var(--err); }
+    </style>
+  </head>
+  <body>
+    <h1>Telegram spike</h1>
+    <p class="sub">
+      Proves sendPhoto (notifier) and getUpdates long-poll + chat_id filter
+      (poller). Send a test photo to your phone, and/or start the poller and
+      message your bot from the configured chat.
+    </p>
+
+    <label>Bot token</label>
+    <input id="token" type="password" placeholder="123456:ABC..." />
+    <label>Chat ID</label>
+    <input id="chat" placeholder="123456789" />
+
+    <div class="row">
+      <button id="send">Send test photo</button>
+      <button id="poll">Start poller</button>
+    </div>
+
+    <div id="status">—</div>
+    <div id="messages"></div>
+
+    <script src="telegram-spike.js"></script>
+  </body>
+</html>

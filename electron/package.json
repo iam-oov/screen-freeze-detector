@@ -7,8 +7,9 @@
   "scripts": {
     "start": "electron . --no-sandbox",
     "test": "node --test \"src/**/*.test.ts\"",
-    "build:renderer": "esbuild src/capture-spike.ts --bundle --format=iife --outfile=capture-spike.js",
-    "start:capture": "pnpm build:renderer && SPIKE=capture electron . --no-sandbox"
+    "build:renderer": "esbuild src/capture-spike.ts src/telegram-spike.ts --bundle --format=iife --outdir=.",
+    "start:capture": "pnpm build:renderer && SPIKE=capture electron . --no-sandbox",
+    "start:telegram": "pnpm build:renderer && SPIKE=telegram electron . --no-sandbox"
   },
   "devDependencies": {
     "electron": "^31.3.1",

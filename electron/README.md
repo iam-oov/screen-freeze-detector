@@ -96,5 +96,17 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   `WebAudioSound` (two 880Hz beeps, cooldown) plays on the freeze via the real
   `FreezeMonitor`; `globalShortcut` F9/F10 start/stop monitoring.
 
-Next: Telegram (notifier + poller), then the real UI + zone selector, then
-packaging + signing.
+- **Step 5 (Telegram)** — `src/telegram.ts`: `TelegramNotifier` (sendPhoto via
+  fetch + FormData) and `TelegramPoller` (getUpdates long-poll, skips backlog,
+  chat_id filter). Try it:
+
+  ```bash
+  pnpm start:telegram
+  ```
+
+  Creds prefill from `SCREENSOUND_TELEGRAM_TOKEN` / `SCREENSOUND_TELEGRAM_CHAT_ID`
+  (real env vars, or `electron/.env`, or the repo's `../.env`). **Send test
+  photo** → a gradient image lands on your phone; **Start poller** → message
+  your bot from the configured chat and it shows up (other chats are ignored).
+
+Next: the real UI + zone selector (the actual goal), then packaging + signing.

@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld("spike", {
   runInjection: (params) => ipcRenderer.invoke("run-injection", params),
   // Global F9/F10 (registered in main when SPIKE=capture) → 'start'/'stop'.
   onHotkey: (callback) => ipcRenderer.on("hotkey", (_e, which) => callback(which)),
+  // Telegram creds from env/.env, to prefill the telegram spike inputs.
+  getTelegramConfig: () => ipcRenderer.invoke("get-telegram-config"),
 });

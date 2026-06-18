@@ -1,4 +1,4 @@
 node_modules/
 dist/
 out/
-capture-spike.js
+*-spike.js
