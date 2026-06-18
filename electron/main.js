@@ -8,7 +8,14 @@
 // migration is not worth it.
 
 const path = require("path");
-const { app, BrowserWindow, ipcMain, desktopCapturer, session } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  desktopCapturer,
+  session,
+  globalShortcut,
+} = require("electron");
 
 // SPIKE=capture loads the step-3 capture spike; otherwise the injection spike.
 const CAPTURE = process.env.SPIKE === "capture";
@@ -29,9 +36,20 @@ function createWindow() {
     height: CAPTURE ? 720 : 560,
     resizable: true,
     backgroundColor: "#141422",
-    webPreferences: { preload: path.join(__dirname, "preload.js") },
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      // Let the Web Audio alert play when monitoring is started via hotkey
+      // (no click gesture to satisfy the autoplay policy).
+      autoplayPolicy: "no-user-gesture-required",
+    },
   });
   win.loadFile(path.join(__dirname, CAPTURE ? "capture.html" : "index.html"));
+
+  if (CAPTURE) {
+    // Global F11/F12 mirror the Python app's start/stop monitoring hotkeys.
+    globalShortcut.register("F11", () => win.webContents.send("hotkey", "start"));
+    globalShortcut.register("F12", () => win.webContents.send("hotkey", "stop"));
+  }
 }
 
 app.whenReady().then(() => {
@@ -46,6 +64,7 @@ app.whenReady().then(() => {
   createWindow();
 });
 
+app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("window-all-closed", () => app.quit());
 
 // The renderer runs the visible countdown, then calls this. We just do the

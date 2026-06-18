@@ -83,12 +83,18 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   pnpm start:capture
   ```
 
-  Click **Start screen capture**. Hold the screen still → it FREEZES; move a
-  window or play a video → it breaks. On macOS the first capture prompts for
-  **Screen Recording** permission (System Settings → Privacy & Security).
+  Click **Start** (or press **F11**; **F12** stops). Hold the screen still → it
+  FREEZES and the Web Audio alert beeps each tick; move a window or play a video
+  → it breaks. On macOS the first capture prompts for **Screen Recording**
+  permission (System Settings → Privacy & Security).
 
   Note: capture resolution is physical pixels — on a Retina Mac that's 2× the
   logical screen size, so real zone-coordinate mapping must scale for DPI. The
   spike sidesteps this by comparing a centered fraction of the captured frame.
 
-Next: sound + global hotkeys, then Telegram, then the real UI + zone selector.
+- **Step 4 (sound + global hotkeys)** — ✅ wired into the capture spike above:
+  `WebAudioSound` (two 880Hz beeps, cooldown) plays on the freeze via the real
+  `FreezeMonitor`; `globalShortcut` F11/F12 start/stop monitoring.
+
+Next: Telegram (notifier + poller), then the real UI + zone selector, then
+packaging + signing.

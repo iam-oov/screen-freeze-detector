@@ -41,17 +41,20 @@
   <body>
     <h1>capture + compare spike</h1>
     <p class="sub">
-      Captures the screen, compares a centered region frame-to-frame using the
-      real domain (RMSComparator + ZoneState). Hold the screen still → it
-      FREEZES; move a window or play a video → it breaks.
+      Captures the screen and runs the real FreezeMonitor (RMSComparator +
+      ZoneState) over a centered region. Hold still → FREEZES and the Web Audio
+      alert beeps every tick; move a window → it breaks. Start/stop with the
+      button or the global hotkeys F11 / F12.
     </p>
 
-    <button id="start">Start screen capture</button>
+    <button id="start">Start (F11 / F12)</button>
     <video id="video" autoplay muted></video>
 
     <div class="readout">
+      <div>status: <span id="status">idle</span></div>
       <div>similarity: <span id="sim">—</span></div>
       <div>state: <span id="state" class="ok">idle</span></div>
+      <div>freeze edges (beep + Enter/notify fires once each): <span id="edge">0</span></div>
       <div id="size" style="color: var(--muted)">—</div>
       <div id="err"></div>
     </div>

@@ -1,11 +1,20 @@
-// Step-3 spike renderer: capture the screen, compare consecutive frames with
-// the REAL domain (RMSComparator + ZoneState), and show a live freeze readout.
-// Proves the capture + compare + state-machine loop works on real pixels.
-import { RMSComparator, ZoneState, type Bbox } from "./domain.ts";
+// Step-3/4 spike renderer: capture the screen and run the REAL FreezeMonitor
+// (domain) over it, with the Web Audio alert wired to the freeze and F11/F12
+// global hotkeys driving start/stop. This now exercises the full edge-trigger
+// orchestration on live pixels.
+import {
+  FreezeMonitor,
+  RMSComparator,
+  ZoneConfig,
+  ZoneState,
+  type Bbox,
+  type PixelFrame,
+} from "./domain.ts";
 import { ScreenCapturer, startCapture } from "./capture.ts";
+import { WebAudioSound } from "./sound.ts";
 
 const THRESHOLD = 0.99; // frames this similar count as "still"
-const CONSEC = 3; // consecutive still frames before declaring FROZEN
+const CONSEC = 3; // consecutive still frames before FROZEN
 const INTERVAL_MS = 500;
 
 const $ = (id: string): HTMLElement => {
@@ -19,14 +28,29 @@ const startBtn = $("start") as HTMLButtonElement;
 const simEl = $("sim");
 const stateEl = $("state");
 const sizeEl = $("size");
+const edgeEl = $("edge");
+const statusEl = $("status");
 const errEl = $("err");
 
-const cmp = new RMSComparator();
+const sound = new WebAudioSound(INTERVAL_MS);
+const zone = new ZoneConfig([0, 0, 0, 0], "Center");
 const state = new ZoneState();
 let capturer: ScreenCapturer | null = null;
+let monitor: FreezeMonitor | null = null;
+let timer: ReturnType<typeof setInterval> | null = null;
+let edges = 0;
 
-// A centered region of the captured frame — sidesteps logical-vs-physical pixel
-// (Retina) coordinate mapping, which a real zone selector must handle later.
+// Sound is real; injection/notify are stubbed (validated in their own spikes).
+const noopInjector = { inject(_bbox?: Bbox): void {} };
+const notifier = {
+  notifyFrozen(_frame: PixelFrame, name: string): void {
+    edges += 1;
+    edgeEl.textContent = `${edges} (last: ${name})`;
+  },
+};
+
+// Centered third of the captured frame — avoids logical-vs-physical (Retina)
+// pixel mapping, which a real zone selector must handle later.
 function centeredBbox(w: number, h: number): Bbox {
   const rw = Math.floor(w / 3);
   const rh = Math.floor(h / 3);
@@ -36,35 +60,48 @@ function centeredBbox(w: number, h: number): Bbox {
 }
 
 function tick(): void {
-  if (!capturer) return;
-  const bbox = centeredBbox(capturer.frameWidth, capturer.frameHeight);
-  const frame = capturer.grabRegion(bbox);
-  sizeEl.textContent = `capturing ${capturer.frameWidth}×${capturer.frameHeight}, region ${frame.width}×${frame.height}`;
-
-  if (state.prevImage) {
-    const sim = cmp.computeSimilarity(state.prevImage, frame);
-    state.update(sim, THRESHOLD, CONSEC);
-    simEl.textContent = `${(sim * 100).toFixed(2)}%  (streak ${state.frozenCount}/${CONSEC})`;
-    stateEl.textContent = state.isFrozen ? "FROZEN" : "moving";
-    stateEl.className = state.isFrozen ? "frozen" : "ok";
-  }
-  state.prevImage = frame;
+  if (!monitor || !capturer || capturer.frameWidth === 0) return;
+  zone.bbox = centeredBbox(capturer.frameWidth, capturer.frameHeight);
+  monitor.checkZones([zone], [state], THRESHOLD, CONSEC);
+  sizeEl.textContent = `capturing ${capturer.frameWidth}×${capturer.frameHeight}`;
+  simEl.textContent = `${(state.similarity * 100).toFixed(2)}%  (streak ${state.frozenCount}/${CONSEC})`;
+  stateEl.textContent = state.isFrozen ? "FROZEN" : "moving";
+  stateEl.className = state.isFrozen ? "frozen" : "ok";
 }
 
-startBtn.addEventListener("click", async () => {
+async function startMonitoring(): Promise<void> {
+  if (timer) return; // already running
   errEl.textContent = "";
-  startBtn.disabled = true;
   try {
-    capturer = await startCapture(video);
-    setInterval(tick, INTERVAL_MS);
-    stateEl.textContent = "started — hold still to freeze, move a window to break it";
+    if (!capturer) capturer = await startCapture(video);
+    const cap = capturer;
+    if (!monitor) {
+      monitor = new FreezeMonitor(cap, new RMSComparator(), sound, noopInjector, notifier);
+    }
+    state.reset();
+    timer = setInterval(tick, INTERVAL_MS);
+    statusEl.textContent = "monitoring (F12 to stop)";
   } catch (e) {
-    errEl.textContent = "capture failed: " + (e instanceof Error ? e.message : String(e));
-    errEl.textContent += "  (macOS: grant Screen Recording in System Settings)";
-    startBtn.disabled = false;
+    errEl.textContent =
+      "capture failed: " +
+      (e instanceof Error ? e.message : String(e)) +
+      "  (macOS: grant Screen Recording in System Settings)";
   }
-});
+}
 
+function stopMonitoring(): void {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  statusEl.textContent = "stopped (Start or F11 to begin)";
+}
+
+startBtn.addEventListener("click", () => void startMonitoring());
+window.spike.onHotkey((which: string) => {
+  if (which === "start") void startMonitoring();
+  else stopMonitoring();
+});
 window.addEventListener("error", (e) => {
   errEl.textContent = "JS error: " + e.message;
 });
