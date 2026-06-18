@@ -136,6 +136,16 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   preload bridge; opt-in via the **Send Telegram photo on freeze** checkbox
   (disabled, with a hint, when no creds). Wiring only — no new tests.
 
-Next (step 7): wire the TelegramPoller back the other way (a phone reply types
-into the last frozen zone), then unify the three spikes into one app (multi-zone
-list, settings, tray); then step 8 packaging + signing.
+- **Step 7c (Telegram remote — reply types into the zone)** — `TelegramPoller`
+  is wired back the other way: a chat reply from the configured chat is typed
+  into the **last frozen zone** (click its center + type + Enter via nut.js,
+  reusing `bboxCenterToScreen`). Opt-in via the **Telegram remote** checkbox,
+  which start/stops the poller. The freeze edge records `lastFrozenBbox`; a reply
+  before anything froze is ignored with a hint. Wiring only — no new tests.
+
+  With 7a–7c the capture spike now runs the FULL pipeline end-to-end in one
+  process: freeze → beep + Enter into the zone + photo to phone, and a phone
+  reply → typed back into the zone. All three side effects are opt-in checkboxes.
+
+Next (step 7d): unify the three spikes (inject/capture/telegram) into ONE app —
+multi-zone list, settings panel, tray. Then step 8: packaging + signing.

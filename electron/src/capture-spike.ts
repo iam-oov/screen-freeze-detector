@@ -12,7 +12,7 @@ import {
 } from "./domain.ts";
 import { ScreenCapturer, startCapture, cssRectToBbox, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
-import { TelegramNotifier } from "./telegram.ts";
+import { TelegramNotifier, TelegramPoller } from "./telegram.ts";
 
 const THRESHOLD = 0.99; // frames this similar count as "still"
 const CONSEC = 3; // consecutive still frames before FROZEN
@@ -36,6 +36,7 @@ const statusEl = $("status");
 const zoneEl = $("zone");
 const injectChk = $("inject") as HTMLInputElement;
 const telegramChk = $("telegram") as HTMLInputElement;
+const remoteChk = $("remote") as HTMLInputElement;
 const tgEl = $("tg");
 const errEl = $("err");
 
@@ -66,26 +67,58 @@ const injector = {
   },
 };
 // Step 7b: the real TelegramNotifier (sendPhoto, verified in step 5) is now
-// wired into the loop. Creds come from env/.env via the preload bridge; the
-// checkbox gates it so a capture test doesn't spam your phone. The local
-// notifier still counts edges for the readout, then forwards the frozen frame.
+// wired into the loop. Step 7c: the TelegramPoller closes the round-trip — a
+// chat reply is typed into the LAST frozen zone via the same nut.js bridge.
+// Creds come from env/.env via the preload bridge; checkboxes gate both so a
+// capture test doesn't spam your phone or hijack the keyboard.
 let telegram: TelegramNotifier | null = null;
+let poller: TelegramPoller | null = null;
+// The zone that last hit the freeze edge — where a phone reply gets typed.
+let lastFrozenBbox: Bbox | null = null;
+
 window.spike
   .getTelegramConfig()
   .then(({ token, chatId }: { token: string; chatId: string }) => {
     if (token && chatId) {
       telegram = new TelegramNotifier(token, chatId, (s: string) => (tgEl.textContent = s));
-      tgEl.textContent = "configured (tick the box)";
+      poller = new TelegramPoller(token, chatId, typeReplyIntoLastZone);
+      tgEl.textContent = "configured (tick a box)";
     } else {
       telegramChk.disabled = true;
+      remoteChk.disabled = true;
       tgEl.textContent = "no creds (set SCREENSOUND_TELEGRAM_* or electron/.env)";
     }
   });
+
+// Type a chat reply into the last frozen zone: click its center (steal focus) +
+// type the text + Enter, via nut.js (main). Reuses bboxCenterToScreen — the same
+// physical->logical mapping the freeze-Enter uses.
+function typeReplyIntoLastZone(text: string): void {
+  if (!lastFrozenBbox || !capturer || capturer.frameWidth === 0) {
+    tgEl.textContent = "reply ignored: no frozen zone yet";
+    return;
+  }
+  const { x, y } = bboxCenterToScreen(
+    lastFrozenBbox,
+    capturer.frameWidth,
+    capturer.frameHeight,
+    window.screen.width,
+    window.screen.height,
+  );
+  void window.spike.runInjection({ x, y, text });
+  tgEl.textContent = `typed reply: ${JSON.stringify(text)}`;
+}
+
+remoteChk.addEventListener("change", () => {
+  if (remoteChk.checked) poller?.start();
+  else poller?.stop();
+});
 
 const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
     edges += 1;
     edgeEl.textContent = `${edges} (last: ${name})`;
+    lastFrozenBbox = [...zone.bbox]; // remember where to type a reply
     if (telegramChk.checked && telegram) telegram.notifyFrozen(frame, name);
   },
 };
