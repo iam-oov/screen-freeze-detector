@@ -23,6 +23,21 @@ If the `@nut-tree-fork/nut-js` version fails to resolve, install the latest:
 npm install @nut-tree-fork/nut-js@latest
 ```
 
+### pnpm: "Electron failed to install correctly"
+
+pnpm v9+ blocks dependency build scripts by default, so Electron's postinstall
+(which downloads the actual binary) never runs — `electron .` then throws
+"failed to install correctly". `package.json` already allowlists it via
+`pnpm.onlyBuiltDependencies`, but if the package was already cached unbuilt,
+force the postinstall:
+
+```bash
+pnpm rebuild electron
+```
+
+Verify it worked: `node -e "console.log(require('electron'))"` should print a
+path ending in `/dist/electron`, not throw.
+
 ## Grant permission (macOS)
 
 Synthetic input requires Accessibility permission. The first run will fail until
