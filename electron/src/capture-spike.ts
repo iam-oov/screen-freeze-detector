@@ -10,7 +10,7 @@ import {
   type Bbox,
   type PixelFrame,
 } from "./domain.ts";
-import { ScreenCapturer, startCapture, cssRectToBbox } from "./capture.ts";
+import { ScreenCapturer, startCapture, cssRectToBbox, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
 
 const THRESHOLD = 0.99; // frames this similar count as "still"
@@ -33,6 +33,7 @@ const sizeEl = $("size");
 const edgeEl = $("edge");
 const statusEl = $("status");
 const zoneEl = $("zone");
+const injectChk = $("inject") as HTMLInputElement;
 const errEl = $("err");
 
 const sound = new WebAudioSound(INTERVAL_MS);
@@ -43,8 +44,24 @@ let monitor: FreezeMonitor | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let edges = 0;
 
-// Sound is real; injection/notify are stubbed (validated in their own spikes).
-const noopInjector = { inject(_bbox?: Bbox): void {} };
+// Step 7a: the injector is now REAL — on the freeze edge it asks main (nut.js,
+// via preload) to click the zone center + Enter on the actual screen. Opt-in
+// via the checkbox so a capture test doesn't hijack the mouse unexpectedly.
+// bboxCenterToScreen converts the zone's physical capture-pixel center into the
+// logical screen points nut.js expects (the Retina inverse of the selector).
+const injector = {
+  inject(bbox?: Bbox): void {
+    if (!injectChk.checked || !bbox || !capturer || capturer.frameWidth === 0) return;
+    const { x, y } = bboxCenterToScreen(
+      bbox,
+      capturer.frameWidth,
+      capturer.frameHeight,
+      window.screen.width,
+      window.screen.height,
+    );
+    void window.spike.runInjection({ x, y, text: "" }); // empty text => just Enter
+  },
+};
 const notifier = {
   notifyFrozen(_frame: PixelFrame, name: string): void {
     edges += 1;
@@ -144,7 +161,7 @@ async function startMonitoring(): Promise<void> {
     if (!capturer) capturer = await startCapture(video);
     const cap = capturer;
     if (!monitor) {
-      monitor = new FreezeMonitor(cap, new RMSComparator(), sound, noopInjector, notifier);
+      monitor = new FreezeMonitor(cap, new RMSComparator(), sound, injector, notifier);
     }
     state.reset();
     timer = setInterval(tick, INTERVAL_MS);

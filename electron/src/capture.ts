@@ -65,6 +65,27 @@ export function cssRectToBbox(
   return [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
 }
 
+// Inverse of cssRectToBbox's concern: a zone bbox lives in capture pixels
+// (physical), but nut.js moves the mouse in the screen's LOGICAL points (on a
+// Retina display those are half the physical pixels). To click a zone's center
+// on the real screen we scale its physical center down by capture/screen ratio.
+// ponytail: assumes a single primary screen at origin; multi-monitor needs the
+// display's offset + per-display scale.
+export function bboxCenterToScreen(
+  bbox: Bbox,
+  captureW: number,
+  captureH: number,
+  screenW: number,
+  screenH: number,
+): { x: number; y: number } {
+  const cx = (bbox[0] + bbox[2]) / 2;
+  const cy = (bbox[1] + bbox[3]) / 2;
+  return {
+    x: Math.round((cx * screenW) / captureW),
+    y: Math.round((cy * screenH) / captureH),
+  };
+}
+
 // Starts capturing the screen. main.js wires a setDisplayMediaRequestHandler
 // that auto-selects the screen, so this resolves without showing a picker.
 // On macOS the first call triggers the Screen Recording permission prompt.

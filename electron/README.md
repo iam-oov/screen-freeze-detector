@@ -121,4 +121,15 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   screenshot, draw zones at native resolution) would be more precise but must
   solve the DPI mapping this approach sidesteps.
 
-Next: the real app UI (multi-zone list, settings, tray), then packaging + signing.
+- **Step 7a (real injector in the live loop)** — the capture spike no longer
+  stubs injection: on the freeze edge it asks main (nut.js, via preload) to
+  click the zone center + press Enter on the REAL screen. Opt-in via the **Press
+  Enter on freeze** checkbox (so a capture test doesn't hijack the mouse).
+  `bboxCenterToScreen` converts the zone's physical capture-pixel center into the
+  logical screen points nut.js expects — the Retina inverse of the selector.
+  `pnpm test` covers it (16 tests). macOS needs Accessibility permission (same
+  as the inject spike).
+
+Next (step 7): wire the real TelegramNotifier into the loop too, then unify the
+three spikes into one app (multi-zone list, settings, tray); then packaging +
+signing.
