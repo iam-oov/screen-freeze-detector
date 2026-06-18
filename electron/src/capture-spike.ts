@@ -13,8 +13,8 @@ import {
 } from "./domain.ts";
 import { ScreenCapturer, startCapture, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
-import { TelegramNotifier, TelegramPoller } from "./telegram.ts";
-import { HOTKEYS, DEFAULTS } from "../constants.js";
+import { TelegramNotifier, TelegramPoller, parseZoneReply } from "./telegram.ts";
+import { HOTKEYS, DEFAULTS, TELEGRAM_COMMANDS } from "../constants.js";
 
 const DEFAULT_THRESHOLD = DEFAULTS.threshold;
 const DEFAULT_CONSEC = DEFAULTS.consec;
@@ -44,7 +44,6 @@ const tgBadge = $("tgBadge");
 const tgToken = $("tgToken") as HTMLInputElement;
 const tgChat = $("tgChat") as HTMLInputElement;
 const tgSave = $("tgSave") as HTMLButtonElement;
-const telegramChk = $("telegram") as HTMLInputElement;
 const defocusBtn = $("defocusBtn") as HTMLButtonElement;
 const defocusStatus = $("defocusStatus");
 const tgEl = $("tg");
@@ -64,6 +63,8 @@ const SVG_TRASH =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
 const SVG_ENTER =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 10 4 15l5 5"/><path d="M4 15h11a5 5 0 0 0 5-5V4"/></svg>';
+const SVG_TG =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
 
 // --- state -----------------------------------------------------------------
 interface Zone {
@@ -90,6 +91,7 @@ let running = false;
 let telegram: TelegramNotifier | null = null;
 let poller: TelegramPoller | null = null;
 let lastFrozenBbox: Bbox | null = null;
+let selectedZoneName: string | null = null; // last zone tapped in Telegram
 let defocusPoint: { x: number; y: number } | null = null;
 
 // --- live settings ---------------------------------------------------------
@@ -186,7 +188,7 @@ function refreshEmpty(): void {
 
 function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
   const n = ++zoneSeq;
-  const config = new ZoneConfig(bbox, `Zone ${n}`);
+  const config = new ZoneConfig(bbox, `z${n}`);
   const state = new ZoneState();
   const [x1, y1, x2, y2] = bbox;
 
@@ -199,7 +201,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
     '<span class="zfrozen c-center">0</span>' +
     '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" checked /><span class="slider"></span></label></span>' +
-    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
+    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic tg" title="Send to Telegram on freeze">${SVG_TG}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
 
   const q = <T extends Element>(sel: string): T => row.querySelector(sel) as T;
   const zone: Zone = {
@@ -246,6 +248,17 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     config.soundEnabled = !config.soundEnabled;
     paintSound();
   });
+  // Per-zone Telegram — opt-in, off by default (like Enter).
+  const tg = q<HTMLButtonElement>(".tg");
+  const paintTg = (): void => {
+    tg.style.opacity = config.telegramEnabled ? "1" : "0.4";
+    tg.style.color = config.telegramEnabled ? "var(--accent)" : "";
+  };
+  paintTg();
+  tg.addEventListener("click", () => {
+    config.telegramEnabled = !config.telegramEnabled;
+    paintTg();
+  });
   q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
 
   zonesEl.appendChild(row);
@@ -277,20 +290,37 @@ function refreshCounts(): void {
 }
 
 // --- monitoring loop -------------------------------------------------------
+// Inject text (or just Enter when text is "") into a zone bbox; returns the
+// injection promise so callers can confirm once it completes.
+function injectInto(bbox: Bbox, text: string, defocus?: { x: number; y: number }): Promise<unknown> {
+  if (!capturer || capturer.frameWidth === 0) return Promise.resolve();
+  const { x, y } = bboxCenterToScreen(
+    bbox,
+    capturer.frameWidth,
+    capturer.frameHeight,
+    window.screen.width,
+    window.screen.height,
+  );
+  return window.spike.runInjection({ x, y, text, defocus });
+}
+
+// Gating is per-zone in the domain (zone.injectEnabled); here we just press Enter.
 const injector = {
-  // Gating is per-zone in the domain (zone.injectEnabled); here we just inject.
   inject(bbox?: Bbox): void {
-    if (!bbox || !capturer || capturer.frameWidth === 0) return;
-    const { x, y } = bboxCenterToScreen(
-      bbox,
-      capturer.frameWidth,
-      capturer.frameHeight,
-      window.screen.width,
-      window.screen.height,
-    );
-    void window.spike.runInjection({ x, y, text: "" });
+    if (bbox) void injectInto(bbox, "");
   },
 };
+
+// Serialize Telegram sends so messages arrive in order (buttons before photos,
+// confirmations after) instead of racing as fire-and-forget.
+let tgQueue: Promise<unknown> = Promise.resolve();
+function tgEnqueue(fn: () => Promise<unknown>): void {
+  tgQueue = tgQueue.then(fn).catch(() => {});
+}
+function tgNote(text: string): void {
+  const t = telegram;
+  if (t) tgEnqueue(() => t.sendNote(text));
+}
 
 const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
@@ -301,7 +331,17 @@ const notifier = {
       z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
       lastFrozenBbox = [...z.config.bbox] as Bbox;
     }
-    if (telegramChk.checked && telegram) telegram.notifyFrozen(frame, name);
+    if (telegram && z && z.config.telegramEnabled) {
+      const tg = telegram;
+      const frozen = zones
+        .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
+        .map((zz) => zz.config.name);
+      // Buttons first, then the screenshot — serialized so order is deterministic.
+      tgEnqueue(async () => {
+        if (frozen.length >= 2) await tg.sendChooser(frozen);
+        await tg.notifyFrozen(frame, name);
+      });
+    }
   },
 };
 
@@ -441,27 +481,47 @@ function setTgBadge(connected: boolean): void {
   tgBadge.innerHTML = `<span class="dot"></span> ${connected ? "Connected" : "Not set"}`;
 }
 
-function typeReplyIntoLastZone(text: string): void {
-  if (!lastFrozenBbox || !capturer || capturer.frameWidth === 0) {
+function zoneByName(name: string | null): Zone | null {
+  return name ? (zones.find((z) => z.config.name === name) ?? null) : null;
+}
+
+// A chat reply: resolve the target zone (explicit "z2:" prefix -> last tapped ->
+// last frozen), then run a command word ("enter") or type the message.
+async function handleReply(text: string): Promise<void> {
+  const { zone, message } = parseZoneReply(text, zones.map((z) => z.config.name));
+  const target =
+    zoneByName(zone)?.config.bbox ?? zoneByName(selectedZoneName)?.config.bbox ?? lastFrozenBbox;
+  if (!target || !capturer || capturer.frameWidth === 0) {
     tgEl.textContent = "Reply ignored: no frozen zone yet";
     return;
   }
-  const { x, y } = bboxCenterToScreen(
-    lastFrozenBbox,
-    capturer.frameWidth,
-    capturer.frameHeight,
-    window.screen.width,
-    window.screen.height,
-  );
-  void window.spike.runInjection({ x, y, text, defocus: defocusPoint ?? undefined });
-  tgEl.textContent = `Typed reply: ${JSON.stringify(text)}`;
+  const tag = zone ? ` → ${zone}` : "";
+  if (TELEGRAM_COMMANDS[message.trim().toLowerCase()] === "enter") {
+    await injectInto(target, ""); // Enter only, no text/defocus
+    tgEl.textContent = `Enter${tag}`;
+    tgNote(`✓ Enter${tag}`);
+  } else {
+    await injectInto(target, message, defocusPoint ?? undefined);
+    tgEl.textContent = `Typed${tag}: ${JSON.stringify(message)}`;
+    tgNote(`✓ Typed${tag}: ${message}`);
+  }
+}
+
+// An inline-button tap: press Enter on that zone now AND pre-select it for the
+// next typed reply. Returns the toast shown on the button.
+function onZoneCallback(code: string): string {
+  const z = zoneByName(code);
+  if (!z || !capturer || capturer.frameWidth === 0) return "Unknown zone";
+  selectedZoneName = code;
+  void injectInto(z.config.bbox, "").then(() => tgNote(`✓ Enter → ${code}`));
+  return `Enter → ${code} · reply to type`;
 }
 
 function applyCreds(token: string, chatId: string): void {
   if (poller) poller.stop();
   if (token && chatId) {
     telegram = new TelegramNotifier(token, chatId, (s: string) => (tgEl.textContent = s));
-    poller = new TelegramPoller(token, chatId, typeReplyIntoLastZone);
+    poller = new TelegramPoller(token, chatId, handleReply, onZoneCallback);
     poller.start(); // remote control is on whenever creds are set
     setTgBadge(true);
   } else {

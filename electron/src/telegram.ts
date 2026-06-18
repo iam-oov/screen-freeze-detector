@@ -6,6 +6,27 @@ import type { PixelFrame, RemoteNotifier } from "./domain.ts";
 
 const API = "https://api.telegram.org";
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Resolve a chat reply to a target zone code. "z2: hi" -> { zone: "z2", message:
+// "hi" } when "z2" is a known code (case-insensitive); otherwise { zone: null,
+// message: text }. Only an exact code prefix routes, so a normal reply that just
+// happens to contain a colon isn't misrouted.
+export function parseZoneReply(
+  text: string,
+  codes: string[],
+): { zone: string | null; message: string } {
+  const m = text.match(/^([^:]+):([\s\S]*)$/);
+  if (m) {
+    const prefix = m[1].trim().toLowerCase();
+    const hit = codes.find((c) => c.toLowerCase() === prefix);
+    if (hit) return { zone: hit, message: m[2].trim() };
+  }
+  return { zone: null, message: text };
+}
+
 // Encode a captured RGBA frame to a PNG Blob via canvas (Telegram sendPhoto
 // wants a file upload).
 export function pixelFrameToPngBlob(frame: PixelFrame): Promise<Blob> {
@@ -41,9 +62,52 @@ export class TelegramNotifier implements RemoteNotifier {
 
   // Edge-triggered by FreezeMonitor. Fire-and-forget, like the Python daemon
   // thread — never blocks the monitor loop.
-  notifyFrozen(frame: PixelFrame, zoneName: string): void {
-    if (!this.configured()) return;
-    void this.send(frame, zoneName);
+  // Returns the send promise so callers can order messages (no more out-of-order
+  // arrivals from racing fire-and-forget sends).
+  notifyFrozen(frame: PixelFrame, zoneName: string): Promise<void> {
+    if (!this.configured()) return Promise.resolve();
+    return this.send(frame, zoneName);
+  }
+
+  // Multi-zone chooser: one inline-keyboard button per frozen, telegram-enabled
+  // zone (button text + callback_data = the zone code).
+  sendChooser(codes: string[]): Promise<void> {
+    if (!this.configured() || codes.length === 0) return Promise.resolve();
+    return this.sendChooserMessage(codes);
+  }
+
+  // A short italic note back to the chat (e.g. action confirmations).
+  sendNote(text: string): Promise<void> {
+    if (!this.configured()) return Promise.resolve();
+    return this.sendMessageHtml(`<i>${escapeHtml(text)}</i>`);
+  }
+
+  private async sendMessageHtml(html: string): Promise<void> {
+    try {
+      const form = new FormData();
+      form.append("chat_id", this.chatId);
+      form.append("text", html);
+      form.append("parse_mode", "HTML");
+      await fetch(`${API}/bot${this.token}/sendMessage`, { method: "POST", body: form });
+    } catch {
+      /* best effort */
+    }
+  }
+
+  private async sendChooserMessage(codes: string[]): Promise<void> {
+    try {
+      const form = new FormData();
+      form.append("chat_id", this.chatId);
+      form.append("text", `${codes.length} zones frozen — tap to send Enter, then reply to type:`);
+      form.append(
+        "reply_markup",
+        JSON.stringify({ inline_keyboard: codes.map((c) => [{ text: c, callback_data: c }]) }),
+      );
+      const res = await fetch(`${API}/bot${this.token}/sendMessage`, { method: "POST", body: form });
+      this.onStatus(res.ok ? `sent chooser (${codes.length})` : `chooser failed: HTTP ${res.status}`);
+    } catch (e) {
+      this.onStatus("chooser error: " + (e instanceof Error ? e.message : String(e)));
+    }
   }
 
   private async send(frame: PixelFrame, zoneName: string): Promise<void> {
@@ -73,13 +137,20 @@ export class TelegramPoller implements CommandSource {
   private token: string;
   private chatId: string;
   private onCommand: (text: string) => void;
+  private onCallback: (code: string) => string | void;
   private running = false;
   private offset: number | null = null;
 
-  constructor(token: string, chatId: string, onCommand: (text: string) => void) {
+  constructor(
+    token: string,
+    chatId: string,
+    onCommand: (text: string) => void,
+    onCallback: (code: string) => string | void = () => {},
+  ) {
     this.token = token;
     this.chatId = chatId;
     this.onCommand = onCommand;
+    this.onCallback = onCallback;
   }
 
   configured(): boolean {
@@ -104,7 +175,15 @@ export class TelegramPoller implements CommandSource {
       for (const u of updates) {
         this.offset = u.update_id + 1;
         const text = this.commandFrom(u);
-        if (text !== null) this.onCommand(text);
+        if (text !== null) {
+          this.onCommand(text);
+          continue;
+        }
+        const cb = this.callbackFrom(u);
+        if (cb !== null) {
+          const toast = this.onCallback(cb.data);
+          void this.answerCallbackQuery(cb.id, toast || "");
+        }
       }
     }
   }
@@ -133,5 +212,25 @@ export class TelegramPoller implements CommandSource {
     const text: string | undefined = msg.text;
     const fromChat = String(msg.chat?.id);
     return text && fromChat === this.chatId ? text : null;
+  }
+
+  // Inline-button tap from the configured chat -> { id, data }.
+  private callbackFrom(update: any): { id: string; data: string } | null {
+    const cq = update.callback_query;
+    if (!cq) return null;
+    const fromChat = String(cq.message?.chat?.id);
+    return cq.data && fromChat === this.chatId ? { id: cq.id, data: cq.data } : null;
+  }
+
+  // Ack a button tap so it stops spinning; optional toast text.
+  private async answerCallbackQuery(id: string, text: string): Promise<void> {
+    try {
+      const form = new FormData();
+      form.append("callback_query_id", id);
+      if (text) form.append("text", text);
+      await fetch(`${API}/bot${this.token}/answerCallbackQuery`, { method: "POST", body: form });
+    } catch {
+      /* best effort */
+    }
   }
 }

@@ -20,13 +20,24 @@ export class ZoneConfig {
   enabled: boolean;
   soundEnabled: boolean;
   injectEnabled: boolean;
+  // Renderer-gated (not used by checkZones): whether this zone talks to Telegram.
+  // Lives here so all per-zone toggles share one config object.
+  telegramEnabled: boolean;
 
-  constructor(bbox: Bbox, name: string, enabled = true, soundEnabled = true, injectEnabled = false) {
+  constructor(
+    bbox: Bbox,
+    name: string,
+    enabled = true,
+    soundEnabled = true,
+    injectEnabled = false,
+    telegramEnabled = false,
+  ) {
     this.bbox = bbox;
     this.name = name;
     this.enabled = enabled;
     this.soundEnabled = soundEnabled;
     this.injectEnabled = injectEnabled;
+    this.telegramEnabled = telegramEnabled;
   }
 }
 

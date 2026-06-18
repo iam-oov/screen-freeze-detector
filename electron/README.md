@@ -72,21 +72,29 @@ collapsible **Configuration** panel (Detection sliders + Telegram), and a
 
 1. Click **Select zones** (or press **F8**) → the app hides itself and opens a
    **fullscreen overlay** of your screen. Drag rectangles (right-click undo, **Enter**
-   confirm, **Esc** cancel). Each becomes a row with a thumbnail, similarity bar,
-   state pill, frozen count, and per-zone Active + Sound toggles. **Show zones**
-   re-opens the overlay read-only.
+   confirm, **Esc** cancel). Each becomes a row (`z1`, `z2`, …) with a thumbnail,
+   similarity bar, state pill, frozen count, and per-zone **Active / Sound / Enter /
+   Telegram** toggles (the action icons; pink = on). **Show zones** re-opens the
+   overlay read-only.
 2. **Start · F9** (header button, hotkey, or tray) begins monitoring; **F10**
    stops. Tune **Similarity threshold / Capture interval / Consecutive frames**
    live.
-3. Toggle the side effects: **Press Enter on freeze**, **Send zone image on
-   freeze**, and **Defocus click** (a point clicked after a typed Telegram reply
-   so the caret stops blinking). Telegram **Bot token + Chat ID** are editable;
-   **Save** writes `~/.config/screensound/.env` and the badge flips to
-   *Connected*; the remote poller then types chat replies into the last frozen
-   zone.
+3. Telegram **Bot token + Chat ID** are editable; **Save** writes
+   `~/.config/screensound/.env` and the badge flips to *Connected*. Per zone, the
+   **Enter** and **Telegram** toggles decide what fires on freeze (both off by
+   default). **Defocus click** sets a point clicked after a typed reply so the
+   caret stops blinking.
 4. Hold a zone still → it FREEZES: the alert beeps and the enabled side effects
-   fire once on the edge. Closing the window (✕) quits the app; the tray can
-   hide/show the window while it's open.
+   fire once. Telegram replies (when ≥1 telegram-enabled zone is frozen):
+   - **`z2: hello`** → types "hello" into z2; plain text → the last tapped / last
+     frozen zone.
+   - **`enter`** (any case, or `z2: enter`) → simulates the **Enter key only** (no
+     text) — for freezes you just need to advance.
+   - With **2+ telegram-enabled zones frozen**, you also get a **chooser** message
+     with a button per zone; tapping one sends **Enter** to it and pre-selects it
+     for your next reply.
+
+   Closing the window (✕) quits the app; the tray can hide/show it while open.
 
 ## Migration progress
 
