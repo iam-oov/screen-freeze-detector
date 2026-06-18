@@ -1,11 +1,10 @@
-// Electron main process for the input-injection spike.
+// Electron main process for the screensound app (capture.html / capture-spike).
 //
-// Why this spike exists: Chromium/Electron can only inject input into its own
-// windows (webContents.sendInputEvent). To click + type into ANOTHER app (the
-// frozen video/chat — the whole point of screensound) we need an OS-level
-// injector. nut.js is the maintained option. This spike proves it works on the
-// target machine BEFORE committing to a full migration. If this fails, the
-// migration is not worth it.
+// The migration spikes (input injection, Telegram) proved their pieces and are
+// now folded into this one window: capture + compare + sound + nut.js injection
+// + Telegram, with a tray and F9/F10 hotkeys. nut.js does the OS-level input
+// injection Chromium can't (webContents.sendInputEvent only reaches our own
+// windows); main owns it and the renderer drives it over the preload bridge.
 
 const path = require("path");
 const {
@@ -15,16 +14,13 @@ const {
   desktopCapturer,
   session,
   globalShortcut,
+  Tray,
+  Menu,
+  nativeImage,
 } = require("electron");
 
-// SPIKE selects which spike window to open: capture | telegram | inject (default).
-const SPIKE = process.env.SPIKE || "inject";
-const CAPTURE = SPIKE === "capture";
-const PAGE = { capture: "capture.html", telegram: "telegram.html" }[SPIKE] || "index.html";
-const BIG = SPIKE !== "inject";
-
-// Telegram creds for the telegram spike — real env vars win over electron/.env
-// (mirrors the Python config.py loader; electron/.env is gitignored).
+// Telegram creds — real env vars win over electron/.env (mirrors the Python
+// config.py loader; electron/.env is gitignored).
 function loadEnvFile(p) {
   try {
     for (const line of require("fs").readFileSync(p, "utf8").split("\n")) {
@@ -52,10 +48,33 @@ try {
   nutError = err.message;
 }
 
+// Step 7d-3: a system tray for the real app (capture). Start/Stop reuse the same
+// "hotkey" IPC as F9/F10. Held in a module ref so it isn't garbage-collected.
+let tray = null;
+let isQuitting = false;
+
+function createTray(win) {
+  tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "tray-icon.png")));
+  tray.setToolTip("screensound");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show", click: () => (win.show(), win.focus()) },
+      { type: "separator" },
+      { label: "Start monitoring (F9)", click: () => win.webContents.send("hotkey", "start") },
+      { label: "Stop monitoring (F10)", click: () => win.webContents.send("hotkey", "stop") },
+      { type: "separator" },
+      { label: "Quit", click: () => ((isQuitting = true), app.quit()) },
+    ]),
+  );
+  // Click toggles the window (macOS shows the menu on click anyway, but this
+  // makes the icon useful on Linux too).
+  tray.on("click", () => (win.isVisible() ? win.hide() : (win.show(), win.focus())));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
-    width: BIG ? 720 : 520,
-    height: BIG ? 720 : 560,
+    width: 720,
+    height: 720,
     resizable: true,
     backgroundColor: "#141422",
     webPreferences: {
@@ -65,13 +84,19 @@ function createWindow() {
       autoplayPolicy: "no-user-gesture-required",
     },
   });
-  win.loadFile(path.join(__dirname, PAGE));
+  win.loadFile(path.join(__dirname, "capture.html"));
 
-  if (CAPTURE) {
-    // Global F9/F10 start/stop monitoring.
-    globalShortcut.register("F9", () => win.webContents.send("hotkey", "start"));
-    globalShortcut.register("F10", () => win.webContents.send("hotkey", "stop"));
-  }
+  // Global F9/F10 start/stop monitoring.
+  globalShortcut.register("F9", () => win.webContents.send("hotkey", "start"));
+  globalShortcut.register("F10", () => win.webContents.send("hotkey", "stop"));
+  createTray(win);
+  // Closing the window hides it (tray keeps the app alive); Quit really exits.
+  win.on("close", (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
 }
 
 app.whenReady().then(() => {

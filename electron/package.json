@@ -1,18 +1,32 @@
 {
-  "name": "screensound-electron-spike",
-  "version": "0.0.1",
+  "name": "screensound-electron",
+  "version": "0.1.0",
   "private": true,
-  "description": "Spike: prove nut.js can inject synthetic input (move+click+type+Enter) into other apps on macOS — the make-or-break feature for migrating screensound to Electron.",
+  "description": "screensound (Electron): monitors screen zones and reacts when they freeze — sound alert, synthetic Enter via nut.js, and a Telegram remote.",
   "main": "main.js",
   "scripts": {
-    "start": "electron . --no-sandbox",
+    "start": "pnpm build:renderer && electron . --no-sandbox",
     "test": "node --test \"src/**/*.test.ts\"",
-    "build:renderer": "esbuild src/capture-spike.ts src/telegram-spike.ts --bundle --format=iife --outdir=.",
-    "start:capture": "pnpm build:renderer && SPIKE=capture electron . --no-sandbox",
-    "start:telegram": "pnpm build:renderer && SPIKE=telegram electron . --no-sandbox"
+    "build:renderer": "esbuild src/capture-spike.ts --bundle --format=iife --outdir=.",
+    "pack": "pnpm build:renderer && electron-builder --mac --dir",
+    "dist": "pnpm build:renderer && electron-builder --mac"
+  },
+  "build": {
+    "appId": "ai.tiriel.screensound",
+    "productName": "screensound",
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["**/*", "!**/*.ts", "!.env", "!README.md", "!assets/**/*"],
+    "asarUnpack": ["**/*.node", "node_modules/@nut-tree-fork/**"],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon.png",
+      "identity": null
+    }
   },
   "devDependencies": {
     "electron": "^31.3.1",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0"
   },
   "dependencies": {

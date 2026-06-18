@@ -1,21 +1,23 @@
-# Electron input-injection spike
+# screensound (Electron)
 
-Goal: prove that **nut.js can inject synthetic input (move + click + type + Enter)
-into other applications on your Mac** — the one feature that does NOT come for
-free in Electron and that decides whether migrating `screensound` is worth it.
-
-This is throwaway proof-of-concept code. It is NOT the migration.
+The Electron port of `screensound`. It started as throwaway spikes to prove the
+make-or-break feature — **nut.js injecting synthetic input (move + click + type +
+Enter) into other apps** — and grew, step by step, into one app: capture +
+compare + sound + injection + Telegram, with a tray and F9/F10 hotkeys. The
+SPIKE env switch and the separate inject/telegram pages are retired (see git
+history); `pnpm start` launches the app (`capture.html`).
 
 ## Run it (on the Mac)
 
 ```bash
 cd electron
-npm install
-npm start
+pnpm install
+pnpm start
 ```
 
-`npm install` builds a native module (`node-gyp`). If it fails, you need Xcode
-command line tools: `xcode-select --install`.
+`pnpm install` builds a native module (`node-gyp`). If it fails, you need Xcode
+command line tools: `xcode-select --install`. `pnpm start` bundles the renderer
+then launches Electron.
 
 If the `@nut-tree-fork/nut-js` version fails to resolve, install the latest:
 
@@ -56,20 +58,22 @@ Synthetic input requires Accessibility permission. The first run will fail until
 you grant it:
 
 - **System Settings → Privacy & Security → Accessibility** → enable the app that
-  runs it (during `npm start` that's **Electron**; in a packaged build it's the
-  app itself).
+  runs it (during `pnpm start` that's **Electron**; in a packaged build it's the
+  app itself). Screen capture also needs **Screen Recording** (prompted on first
+  Start).
 
 You may need to quit and relaunch after granting.
 
-## What success looks like
+## Using it
 
-1. Open TextEdit (or any text field) and note where its text area sits on screen.
-2. Put those coordinates in the X / Y fields, hit **Run**.
-3. During the 5s countdown, don't touch anything.
-4. nut.js clicks that point and types the text + Enter into TextEdit.
-
-Log shows `RESULT: nut.js injection WORKS ✅` → the migration is viable.
-Log shows `FAILED ❌` → read the error; usually missing Accessibility permission.
+1. **Start** (or **F9**) to begin the screen preview.
+2. **Drag rectangles** over the preview to add zones (each shows in the list).
+3. Tick the side-effect checkboxes you want: **Press Enter on freeze**, **Send
+   Telegram photo on freeze**, **Telegram remote** (a chat reply types into the
+   last frozen zone). Tune **Threshold / Interval / Consec frames** live.
+4. Hold a zone still → it FREEZES: the alert beeps, and the enabled side effects
+   fire once on the edge. The tray mirrors Start/Stop and keeps the app alive
+   when you close the window.
 
 ## Migration progress
 
@@ -77,11 +81,7 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
 - **Step 2 (pure domain → TS)** — ✅ `src/domain.ts` + `src/domain.test.ts`.
   Run: `pnpm test` (11 tests).
 - **Step 3 (capture + compare loop)** — capture the screen via `desktopCapturer`
-  and run the real domain on the pixels:
-
-  ```bash
-  pnpm start:capture
-  ```
+  and run the real domain on the pixels (`pnpm start`).
 
   Click **Start** (or press **F9**; **F10** stops). Hold the screen still → it
   FREEZES and the Web Audio alert beeps each tick; move a window or play a video
@@ -98,16 +98,9 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
 
 - **Step 5 (Telegram)** — `src/telegram.ts`: `TelegramNotifier` (sendPhoto via
   fetch + FormData) and `TelegramPoller` (getUpdates long-poll, skips backlog,
-  chat_id filter). Try it:
-
-  ```bash
-  pnpm start:telegram
-  ```
-
-  Creds prefill from `SCREENSOUND_TELEGRAM_TOKEN` / `SCREENSOUND_TELEGRAM_CHAT_ID`
-  (real env vars, or `electron/.env`, or the repo's `../.env`). **Send test
-  photo** → a gradient image lands on your phone; **Start poller** → message
-  your bot from the configured chat and it shows up (other chats are ignored).
+  chat_id filter). Creds load from `SCREENSOUND_TELEGRAM_TOKEN` /
+  `SCREENSOUND_TELEGRAM_CHAT_ID` (real env vars, or `electron/.env`, or the
+  repo's `../.env`). Now wired into the app (steps 7b/7c), not a standalone page.
 
 - **Step 6 (zone selector)** — ✅ in the capture spike: after Start, **drag a
   rectangle over the live preview** to pick the zone to monitor. The drawn rect
@@ -161,6 +154,50 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   retunes the sound throttle. Defaults 0.99 / 500 / 3. `WebAudioSound` got a
   `setCooldown`. Wiring only — no new tests.
 
-Next (step 7): 7d-3 a tray icon; then drop the SPIKE env switch so this page IS
-the app (the inject/telegram spikes are now subsumed). Then step 8: packaging +
-signing.
+- **Step 7d-3 (tray)** — the capture app now has a system **tray** icon
+  (`tray-icon.png`, a 32×32 generated via node zlib). Menu: Show / Start (F9) /
+  Stop (F10) / Quit; Start/Stop reuse the same "hotkey" IPC as the shortcuts.
+  Closing the window now **hides** it (the tray keeps the app alive); only Quit
+  exits. Gated to the capture spike. Main-process wiring — no tests. (Step 8 must
+  ship `tray-icon.png` with the app.)
+
+- **Step 7d-4 (retire the SPIKE switch)** — ✅ done. `main.js` always loads
+  `capture.html` (no env branching); F9/F10 + tray + hide-on-close are
+  unconditional. Deleted the dead inject/telegram pages (`index.html`,
+  `renderer.js`, `telegram.html`, `src/telegram-spike.ts`). `pnpm start` builds
+  the renderer and launches the app; `build:renderer` bundles only
+  `capture-spike.ts`. Step 7 complete.
+
+- **Step 8 (packaging — personal/unsigned)** — ✅ configured (build runs on the
+  Mac; see **Packaging** below). `electron-builder` config in `package.json`:
+  unsigned (`mac.identity: null`), DMG target, app icon `assets/icon.png`
+  (auto-converted to `.icns` on macOS), `tray-icon.png` bundled, native nut.js
+  unpacked from the asar, `.env` excluded from the package. Scripts: `pnpm pack`
+  (quick `.app`) / `pnpm dist` (DMG).
+
+Optional polish (deferred): Developer ID signing + notarization (stable TCC
+permissions, distributable); rename `capture.html` / `capture-spike.ts` (the
+"spike" name is now a misnomer); macOS template tray icon.
+
+## Packaging (macOS, personal/unsigned)
+
+Must run **on the Mac** (electron-builder can't cross-build a macOS app from
+Linux).
+
+```bash
+cd electron
+pnpm install
+pnpm dist      # -> dist/screensound-0.1.0-<arch>.dmg   (or: pnpm pack for a bare .app)
+```
+
+It builds unsigned (no Apple Developer account needed). Gotchas:
+
+- **Gatekeeper**: first launch is blocked — right-click the app → **Open** (or
+  `xattr -cr /Applications/screensound.app`). On Apple Silicon electron-builder
+  ad-hoc signs so the binary runs.
+- **Permissions**: grant **Accessibility** (nut.js input) and **Screen
+  Recording** (capture) in System Settings → Privacy & Security. Because the
+  build is unsigned, macOS may ask you to **re-grant** after a rebuild (the
+  binary identity changes) — that's the tradeoff vs. Developer ID signing.
+- The icon (`assets/icon.png`) and `tray-icon.png` are committed, so the build
+  has them on a fresh clone.
