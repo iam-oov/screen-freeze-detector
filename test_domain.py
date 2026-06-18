@@ -195,6 +195,30 @@ def test_freeze_monitor_skips_disabled_zone() -> None:
     assert states[0].prev_image is None  # never captured
 
 
+def test_type_text_appends_defocus_click_only_when_point_given() -> None:
+    from freeze_detector import XdotoolEnterInjector
+
+    inj = XdotoolEnterInjector()
+    captured: list = []
+    inj._send = lambda commands, bbox: captured.append((commands, bbox))
+
+    # No defocus point -> just type + Return.
+    inj.type_text("hi", bbox=(0, 0, 10, 10))
+    commands, bbox = captured[-1]
+    assert [c[0] for c in commands] == ["type", "key"], commands
+    assert bbox == (0, 0, 10, 10)
+
+    # With a defocus point -> a trailing mousemove+click to that exact pixel.
+    inj.type_text("hi", bbox=(0, 0, 10, 10), defocus_point=(1900, 5))
+    commands, _ = captured[-1]
+    assert commands[-1] == ["mousemove", "--sync", "1900", "5", "click", "1"], commands
+
+    # Empty text is a no-op (nothing sent).
+    before = len(captured)
+    inj.type_text("", bbox=(0, 0, 10, 10), defocus_point=(1, 1))
+    assert len(captured) == before
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

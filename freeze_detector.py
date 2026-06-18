@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Protocol
 import wave
 
@@ -107,7 +107,10 @@ class ImageComparator(Protocol):
 class InputInjector(Protocol):
     def inject(self, bbox: tuple[int, int, int, int] | None = None) -> None: ...
     def type_text(
-        self, text: str, bbox: tuple[int, int, int, int] | None = None
+        self,
+        text: str,
+        bbox: tuple[int, int, int, int] | None = None,
+        defocus_point: tuple[int, int] | None = None,
     ) -> None: ...
 
 
@@ -246,17 +249,27 @@ class XdotoolEnterInjector:
         self._send([["key", "--clearmodifiers", "Return"]], bbox)
 
     def type_text(
-        self, text: str, bbox: tuple[int, int, int, int] | None = None
+        self,
+        text: str,
+        bbox: tuple[int, int, int, int] | None = None,
+        defocus_point: tuple[int, int] | None = None,
     ) -> None:
         # Gated by the Telegram flow, not by self._enabled (that toggle is for
         # the auto-Enter on freeze). Types the text, then Enter to submit it.
         if not text:
             return
-        self._send(
-            [["type", "--clearmodifiers", "--", text],
-             ["key", "--clearmodifiers", "Return"]],
-            bbox,
-        )
+        commands = [
+            ["type", "--clearmodifiers", "--", text],
+            ["key", "--clearmodifiers", "Return"],
+        ]
+        # After submitting, the input keeps focus and the text caret blinks —
+        # those pixels toggle every frame, so the freeze comparison reads the
+        # zone as "still moving" and never re-freezes. Click a user-chosen dead
+        # spot to drop focus and kill the caret. _send restores the mouse after.
+        if defocus_point is not None:
+            dx, dy = defocus_point
+            commands.append(["mousemove", "--sync", str(dx), str(dy), "click", "1"])
+        self._send(commands, bbox)
 
     def _send(
         self, commands: list[list[str]], bbox: tuple[int, int, int, int] | None
@@ -1138,6 +1151,9 @@ class FreezeDetectorApp:
         self._notifier = notifier
         self._poller = poller
         self._last_frozen_bbox: tuple[int, int, int, int] | None = None
+        # Where to click after typing a Telegram reply, to drop input focus so
+        # the blinking caret stops tripping the freeze comparison. User-picked.
+        self._defocus_point: tuple[int, int] | None = None
 
         self.zones: list[ZoneConfig] = []
         self.states: list[ZoneState] = []
@@ -1272,7 +1288,7 @@ class FreezeDetectorApp:
         ttk.Label(
             tg_token_row, text="Token", width=8, style="FieldLabel.TLabel"
         ).pack(side=tk.LEFT)
-        self._tg_token_var = tk.StringVar()
+        self._tg_token_var = tk.StringVar(value=settings.telegram_token)
         ttk.Entry(tg_token_row, textvariable=self._tg_token_var, show="•").pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
@@ -1282,7 +1298,7 @@ class FreezeDetectorApp:
         ttk.Label(
             tg_chat_row, text="Chat ID", width=8, style="FieldLabel.TLabel"
         ).pack(side=tk.LEFT)
-        self._tg_chat_var = tk.StringVar()
+        self._tg_chat_var = tk.StringVar(value=settings.telegram_chat_id)
         ttk.Entry(tg_chat_row, textvariable=self._tg_chat_var).pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
@@ -1302,6 +1318,18 @@ class FreezeDetectorApp:
         self._tg_check.pack(side=tk.LEFT)
         if not self._notifier.configured:
             self._tg_check.configure(state=tk.DISABLED)
+
+        defocus_row = ttk.Frame(settings_box)
+        defocus_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(
+            defocus_row,
+            text="Set defocus click",
+            command=self._select_defocus_point,
+        ).pack(side=tk.LEFT)
+        self._defocus_label = ttk.Label(
+            defocus_row, text="No defocus point", style="FieldLabel.TLabel"
+        )
+        self._defocus_label.pack(side=tk.LEFT, padx=(8, 0))
 
         # --- Zone list ---
         zones_lf = ttk.LabelFrame(main, text="  Monitored Zones  ", padding=4)
@@ -1370,9 +1398,21 @@ class FreezeDetectorApp:
         # Guard: only persist a complete pair. An empty/partial Save must never
         # wipe the creds already loaded from .env.
         if not token or not chat_id:
-            self.show_status("Telegram: enter both token and Chat ID to save")
+            messagebox.showwarning(
+                "Telegram", "Enter both Token and Chat ID before saving."
+            )
             return
-        save_telegram(token, chat_id)
+        # A modal dialog is the confirmation, not the status bar: in installed
+        # mode there is no terminal, and a one-line status update is too easy to
+        # miss. Only confirm on a real write; surface a failed write the same way
+        # instead of dying silently on stderr.
+        try:
+            env_path = save_telegram(token, chat_id)
+        except OSError as exc:
+            messagebox.showerror(
+                "Telegram", f"Could not save credentials:\n{exc}"
+            )
+            return
         # Apply live: stop the poller, swap creds on both, restart if still on.
         self._poller.stop()
         self._notifier.set_credentials(token, chat_id)
@@ -1380,6 +1420,7 @@ class FreezeDetectorApp:
         self._tg_check.configure(state=tk.NORMAL)
         if self._telegram_var.get():
             self._poller.start()
+        messagebox.showinfo("Telegram", f"Credentials saved to:\n{env_path}")
         self.show_status("Telegram credentials saved")
 
     def _on_telegram_toggled(self, *_args) -> None:
@@ -1405,8 +1446,20 @@ class FreezeDetectorApp:
         if not self.is_monitoring or self._last_frozen_bbox is None:
             self.show_status("Telegram reply ignored: no frozen zone right now")
             return
-        self._injector.type_text(text, self._last_frozen_bbox)
+        self._injector.type_text(text, self._last_frozen_bbox, self._defocus_point)
         self.show_status(f"Typed into last frozen zone: {text[:40]}")
+
+    def _select_defocus_point(self) -> None:
+        # Reuse the freeze-zone selector; the first rectangle's center is the
+        # click point. Drawing a zone is more familiar than picking a pixel.
+        ZoneSelector(self.root, self._capturer, self._on_defocus_selected)
+
+    def _on_defocus_selected(self, zones: list, _screenshot) -> None:
+        if not zones:
+            return
+        left, top, right, bottom = zones[0].bbox
+        self._defocus_point = ((left + right) // 2, (top + bottom) // 2)
+        self._defocus_label.configure(text=f"Defocus at {self._defocus_point}")
 
     def show_status(self, message: str) -> None:
         self._status_var.set(message)
