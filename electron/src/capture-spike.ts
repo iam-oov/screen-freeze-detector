@@ -14,9 +14,10 @@ import { ScreenCapturer, startCapture, cssRectToBbox, bboxCenterToScreen } from 
 import { WebAudioSound } from "./sound.ts";
 import { TelegramNotifier, TelegramPoller } from "./telegram.ts";
 
-const THRESHOLD = 0.99; // frames this similar count as "still"
-const CONSEC = 3; // consecutive still frames before FROZEN
-const INTERVAL_MS = 500;
+// Defaults; the Settings inputs override these live (step 7d-2).
+const DEFAULT_THRESHOLD = 0.99; // frames this similar count as "still"
+const DEFAULT_CONSEC = 3; // consecutive still frames before FROZEN
+const DEFAULT_INTERVAL_MS = 500;
 
 const $ = (id: string): HTMLElement => {
   const el = document.getElementById(id);
@@ -28,25 +29,57 @@ const video = $("video") as HTMLVideoElement;
 const startBtn = $("start") as HTMLButtonElement;
 const stage = $("stage");
 const sel = $("sel");
-const simEl = $("sim");
-const stateEl = $("state");
 const sizeEl = $("size");
 const edgeEl = $("edge");
 const statusEl = $("status");
-const zoneEl = $("zone");
+const zcountEl = $("zcount");
+const zonesEl = $("zones");
 const injectChk = $("inject") as HTMLInputElement;
 const telegramChk = $("telegram") as HTMLInputElement;
 const remoteChk = $("remote") as HTMLInputElement;
+const thresholdInput = $("threshold") as HTMLInputElement;
+const intervalInput = $("interval") as HTMLInputElement;
+const consecInput = $("consec") as HTMLInputElement;
 const tgEl = $("tg");
 const errEl = $("err");
 
-const sound = new WebAudioSound(INTERVAL_MS);
-const zone = new ZoneConfig([0, 0, 0, 0], "Center");
-const state = new ZoneState();
+// Live settings: read the inputs each use, falling back to the defaults.
+const num = (el: HTMLInputElement, fallback: number): number => {
+  const v = parseFloat(el.value);
+  return Number.isFinite(v) ? v : fallback;
+};
+const threshold = (): number => num(thresholdInput, DEFAULT_THRESHOLD);
+const consec = (): number => Math.max(1, Math.round(num(consecInput, DEFAULT_CONSEC)));
+const intervalMs = (): number => Math.max(100, Math.round(num(intervalInput, DEFAULT_INTERVAL_MS)));
+
+const sound = new WebAudioSound(DEFAULT_INTERVAL_MS);
+
+// Interval changes restart the tick loop and retune the sound throttle so the
+// beep still fires about once per tick while frozen.
+intervalInput.addEventListener("change", () => {
+  sound.setCooldown(intervalMs());
+  if (timer) {
+    clearInterval(timer);
+    timer = setInterval(tick, intervalMs());
+  }
+});
+
+// Step 7d: multi-zone. The domain already takes parallel ZoneConfig[]/ZoneState[]
+// arrays; each drawn rectangle becomes one Zone with its own overlay + list row.
+const COLORS = ["#39ff14", "#ff5cf0", "#5cc8ff", "#ffd93b", "#ff7a45", "#9b8cff"];
+interface Zone {
+  config: ZoneConfig;
+  state: ZoneState;
+  rect: HTMLDivElement; // persistent overlay on the preview
+  stEl: HTMLElement; // per-row state text
+}
+const zones: Zone[] = [];
+
 let capturer: ScreenCapturer | null = null;
 let monitor: FreezeMonitor | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let edges = 0;
+let zoneSeq = 0; // monotonic so names/colors don't reshuffle on remove
 
 // Step 7a: the injector is now REAL — on the freeze edge it asks main (nut.js,
 // via preload) to click the zone center + Enter on the actual screen. Opt-in
@@ -118,24 +151,49 @@ const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
     edges += 1;
     edgeEl.textContent = `${edges} (last: ${name})`;
-    lastFrozenBbox = [...zone.bbox]; // remember where to type a reply
+    const z = zones.find((z) => z.config.name === name);
+    if (z) lastFrozenBbox = [...z.config.bbox] as Bbox; // where to type a reply
     if (telegramChk.checked && telegram) telegram.notifyFrozen(frame, name);
   },
 };
 
-// Centered third of the captured frame — the default until the user draws a
-// zone. The drawn zone (selectedBbox) is in the same physical-pixel space, so
-// switching between them needs no DPI mapping.
-function centeredBbox(w: number, h: number): Bbox {
-  const rw = Math.floor(w / 3);
-  const rh = Math.floor(h / 3);
-  const x = Math.floor((w - rw) / 2);
-  const y = Math.floor((h - rh) / 2);
-  return [x, y, x + rw, y + rh];
+// Add a zone from a finished drag: bbox in capture pixels, cssRect in the
+// preview's CSS pixels (for the persistent overlay). Creates the overlay + a
+// list row with a remove button.
+function addZone(bbox: Bbox, cssRect: { left: number; top: number; width: number; height: number }): void {
+  const n = ++zoneSeq;
+  const color = COLORS[(n - 1) % COLORS.length];
+  const config = new ZoneConfig(bbox, `Zone ${n}`);
+  const state = new ZoneState();
+
+  const rect = document.createElement("div");
+  rect.className = "zrect";
+  rect.style.cssText = `left:${cssRect.left}px;top:${cssRect.top}px;width:${cssRect.width}px;height:${cssRect.height}px;border-color:${color}`;
+  stage.appendChild(rect);
+
+  const row = document.createElement("div");
+  row.className = "zrow";
+  const [x1, y1, x2, y2] = bbox;
+  row.innerHTML =
+    `<span class="sw" style="background:${color}"></span>` +
+    `<span class="nm">${config.name}</span>` +
+    `<span style="color:var(--muted)">${x2 - x1}×${y2 - y1}px</span>` +
+    `<span class="st ok">idle</span>` +
+    `<button type="button">remove</button>`;
+  const stEl = row.querySelector(".st") as HTMLElement;
+  const zone: Zone = { config, state, rect, stEl };
+  (row.querySelector("button") as HTMLButtonElement).addEventListener("click", () => removeZone(zone, row));
+  zonesEl.appendChild(row);
+
+  zones.push(zone);
 }
 
-// Set by dragging over the preview; null = watch the centered region.
-let selectedBbox: Bbox | null = null;
+function removeZone(zone: Zone, row: HTMLElement): void {
+  zone.rect.remove();
+  row.remove();
+  const i = zones.indexOf(zone);
+  if (i >= 0) zones.splice(i, 1);
+}
 
 // --- Zone selector: drag a rectangle over the live preview -----------------
 // The drawn rect is in the <video>'s displayed CSS pixels; cssRectToBbox scales
@@ -187,25 +245,25 @@ stage.addEventListener("pointerup", (e) => {
   const top = Math.min(startY, p.y);
   const w = Math.abs(p.x - startX);
   const h = Math.abs(p.y - startY);
-  if (w < MIN_DRAG || h < MIN_DRAG) {
-    sel.style.display = "none";
-    return; // treat as a click, not a zone
-  }
+  sel.style.display = "none"; // the persistent .zrect takes over
+  if (w < MIN_DRAG || h < MIN_DRAG) return; // treat as a click, not a zone
   const r = video.getBoundingClientRect();
-  selectedBbox = cssRectToBbox({ left, top, width: w, height: h }, video.videoWidth, video.videoHeight, r.width, r.height);
-  state.reset(); // fresh freeze streak for the new zone
-  const [x1, y1, x2, y2] = selectedBbox;
-  zoneEl.textContent = `${x2 - x1}×${y2 - y1} px @ (${x1}, ${y1})`;
+  const bbox = cssRectToBbox({ left, top, width: w, height: h }, video.videoWidth, video.videoHeight, r.width, r.height);
+  addZone(bbox, { left, top, width: w, height: h });
 });
 
 function tick(): void {
-  if (!monitor || !capturer || capturer.frameWidth === 0) return;
-  zone.bbox = selectedBbox ?? centeredBbox(capturer.frameWidth, capturer.frameHeight);
-  monitor.checkZones([zone], [state], THRESHOLD, CONSEC);
+  if (!monitor || !capturer || capturer.frameWidth === 0 || zones.length === 0) return;
+  monitor.checkZones(zones.map((z) => z.config), zones.map((z) => z.state), threshold(), consec());
+  let frozen = 0;
+  for (const z of zones) {
+    const s = z.state;
+    z.stEl.textContent = `${(s.similarity * 100).toFixed(1)}%  ${s.isFrozen ? "FROZEN" : "moving"}`;
+    z.stEl.className = `st ${s.isFrozen ? "frozen" : "ok"}`;
+    if (s.isFrozen) frozen += 1;
+  }
   sizeEl.textContent = `capturing ${capturer.frameWidth}×${capturer.frameHeight}`;
-  simEl.textContent = `${(state.similarity * 100).toFixed(2)}%  (streak ${state.frozenCount}/${CONSEC})`;
-  stateEl.textContent = state.isFrozen ? "FROZEN" : "moving";
-  stateEl.className = state.isFrozen ? "frozen" : "ok";
+  zcountEl.textContent = `${zones.length} (${frozen} frozen)`;
 }
 
 async function startMonitoring(): Promise<void> {
@@ -217,9 +275,11 @@ async function startMonitoring(): Promise<void> {
     if (!monitor) {
       monitor = new FreezeMonitor(cap, new RMSComparator(), sound, injector, notifier);
     }
-    state.reset();
-    timer = setInterval(tick, INTERVAL_MS);
-    statusEl.textContent = "monitoring (F10 to stop)";
+    zones.forEach((z) => z.state.reset());
+    sound.setCooldown(intervalMs());
+    timer = setInterval(tick, intervalMs());
+    statusEl.textContent =
+      zones.length === 0 ? "monitoring — draw a zone on the preview" : "monitoring (F10 to stop)";
   } catch (e) {
     errEl.textContent =
       "capture failed: " +

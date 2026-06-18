@@ -147,5 +147,20 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   process: freeze → beep + Enter into the zone + photo to phone, and a phone
   reply → typed back into the zone. All three side effects are opt-in checkboxes.
 
-Next (step 7d): unify the three spikes (inject/capture/telegram) into ONE app —
-multi-zone list, settings panel, tray. Then step 8: packaging + signing.
+- **Step 7d-1 (multi-zone)** — the capture spike now monitors MANY zones, not
+  one. Each drag adds a `ZoneConfig`/`ZoneState` pair (the domain already took
+  parallel arrays), draws a persistent coloured rectangle on the preview, and
+  adds a list row showing its live similarity / FROZEN state with a **remove**
+  button. The freeze edge fires per-zone (beep + Enter + photo), and a phone
+  reply types into whichever zone last froze. The centered-region fallback is
+  gone — a real app needs explicit zones. Wiring only — no new tests.
+
+- **Step 7d-2 (settings)** — **Threshold**, **Interval ms** and **Consec frames**
+  (the old constants) are now editable inputs, read live: threshold/consec take
+  effect on the next tick; changing the interval restarts the tick loop and
+  retunes the sound throttle. Defaults 0.99 / 500 / 3. `WebAudioSound` got a
+  `setCooldown`. Wiring only — no new tests.
+
+Next (step 7): 7d-3 a tray icon; then drop the SPIKE env switch so this page IS
+the app (the inject/telegram spikes are now subsumed). Then step 8: packaging +
+signing.

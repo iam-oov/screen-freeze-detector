@@ -20,6 +20,10 @@ export class WebAudioSound implements SoundPlayer {
     this.cooldownMs = cooldownMs;
   }
 
+  setCooldown(cooldownMs: number): void {
+    this.cooldownMs = cooldownMs;
+  }
+
   play(): void {
     const now = performance.now();
     if (now - this.lastPlay < this.cooldownMs) return;

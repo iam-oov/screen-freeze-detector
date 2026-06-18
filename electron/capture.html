@@ -41,19 +41,42 @@
         border-radius: 6px; font-family: ui-monospace, monospace; font-size: 13px;
       }
       .readout div { margin: 4px 0; }
-      #state.frozen { color: var(--err); font-weight: 700; }
-      #state.ok { color: var(--ok); }
+      .frozen { color: var(--err); font-weight: 700; }
+      .ok { color: var(--ok); }
       #err { color: var(--err); }
+      .zrect {
+        position: absolute; pointer-events: none;
+        border: 2px solid; border-radius: 2px;
+      }
+      #zones { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+      .zrow {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 10px; background: var(--surface);
+        border-radius: 6px; font-size: 13px;
+      }
+      .zrow .sw { width: 12px; height: 12px; border-radius: 2px; flex: 0 0 auto; }
+      .zrow .nm { font-weight: 600; }
+      .zrow .st { margin-left: auto; font-family: ui-monospace, monospace; }
+      .zrow button { padding: 4px 9px; font-size: 12px; background: #3a3a55; }
+      .settings {
+        margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;
+        font-size: 13px; color: var(--muted); align-items: center;
+      }
+      .settings input {
+        width: 76px; margin-left: 6px; padding: 5px 7px;
+        background: var(--surface); color: var(--text);
+        border: 1px solid #2a2a44; border-radius: 5px;
+      }
     </style>
   </head>
   <body>
     <h1>capture + compare spike</h1>
     <p class="sub">
-      Start the preview, then <strong>drag a rectangle over it</strong> to pick
-      the zone to monitor (drawn in real capture pixels — no DPI guesswork). The
-      real FreezeMonitor runs over that zone: hold it still → FREEZES and the Web
-      Audio alert beeps every tick; move it → it breaks. Until you draw a zone it
-      watches a centered region. Start/stop with the button or hotkeys F9 / F10.
+      Start the preview, then <strong>drag rectangles over it</strong> to add
+      zones (drawn in real capture pixels — no DPI guesswork). Every zone is
+      monitored by the real FreezeMonitor: hold one still → it FREEZES, the Web
+      Audio alert beeps, and (if enabled) Enter + a Telegram photo fire. Remove a
+      zone from the list below. Start/stop with the button or hotkeys F9 / F10.
     </p>
 
     <button id="start">Start (F9 / F10)</button>
@@ -66,6 +89,12 @@
     <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
       <input type="checkbox" id="remote" /> Telegram remote: type replies into last frozen zone
     </label>
+    <div class="settings">
+      <label>Threshold <input type="number" id="threshold" min="0" max="1" step="0.001" value="0.99" /></label>
+      <label>Interval ms <input type="number" id="interval" min="100" step="50" value="500" /></label>
+      <label>Consec frames <input type="number" id="consec" min="1" step="1" value="3" /></label>
+    </div>
+
     <div id="stage">
       <video id="video" autoplay muted></video>
       <div id="sel"></div>
@@ -73,14 +102,14 @@
 
     <div class="readout">
       <div>status: <span id="status">idle</span></div>
-      <div>zone: <span id="zone">centered region (drag to pick)</span></div>
-      <div>similarity: <span id="sim">—</span></div>
-      <div>state: <span id="state" class="ok">idle</span></div>
+      <div>zones: <span id="zcount">0 (drag on the preview to add)</span></div>
       <div>freeze edges (beep + Enter/notify fires once each): <span id="edge">0</span></div>
       <div>telegram: <span id="tg" style="color: var(--muted)">off</span></div>
       <div id="size" style="color: var(--muted)">—</div>
       <div id="err"></div>
     </div>
+
+    <div id="zones"></div>
 
     <script src="capture-spike.js"></script>
   </body>
