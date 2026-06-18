@@ -12,6 +12,7 @@ import {
 } from "./domain.ts";
 import { ScreenCapturer, startCapture, cssRectToBbox, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
+import { TelegramNotifier } from "./telegram.ts";
 
 const THRESHOLD = 0.99; // frames this similar count as "still"
 const CONSEC = 3; // consecutive still frames before FROZEN
@@ -34,6 +35,8 @@ const edgeEl = $("edge");
 const statusEl = $("status");
 const zoneEl = $("zone");
 const injectChk = $("inject") as HTMLInputElement;
+const telegramChk = $("telegram") as HTMLInputElement;
+const tgEl = $("tg");
 const errEl = $("err");
 
 const sound = new WebAudioSound(INTERVAL_MS);
@@ -62,10 +65,28 @@ const injector = {
     void window.spike.runInjection({ x, y, text: "" }); // empty text => just Enter
   },
 };
+// Step 7b: the real TelegramNotifier (sendPhoto, verified in step 5) is now
+// wired into the loop. Creds come from env/.env via the preload bridge; the
+// checkbox gates it so a capture test doesn't spam your phone. The local
+// notifier still counts edges for the readout, then forwards the frozen frame.
+let telegram: TelegramNotifier | null = null;
+window.spike
+  .getTelegramConfig()
+  .then(({ token, chatId }: { token: string; chatId: string }) => {
+    if (token && chatId) {
+      telegram = new TelegramNotifier(token, chatId, (s: string) => (tgEl.textContent = s));
+      tgEl.textContent = "configured (tick the box)";
+    } else {
+      telegramChk.disabled = true;
+      tgEl.textContent = "no creds (set SCREENSOUND_TELEGRAM_* or electron/.env)";
+    }
+  });
+
 const notifier = {
-  notifyFrozen(_frame: PixelFrame, name: string): void {
+  notifyFrozen(frame: PixelFrame, name: string): void {
     edges += 1;
     edgeEl.textContent = `${edges} (last: ${name})`;
+    if (telegramChk.checked && telegram) telegram.notifyFrozen(frame, name);
   },
 };
 

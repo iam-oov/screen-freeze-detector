@@ -130,6 +130,12 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   `pnpm test` covers it (16 tests). macOS needs Accessibility permission (same
   as the inject spike).
 
-Next (step 7): wire the real TelegramNotifier into the loop too, then unify the
-three spikes into one app (multi-zone list, settings, tray); then packaging +
-signing.
+- **Step 7b (real Telegram notifier in the loop)** — the freeze edge now also
+  fires the real `TelegramNotifier.notifyFrozen` (sendPhoto, verified in step 5):
+  the frozen zone's PNG lands on your phone. Creds load from env/.env via the
+  preload bridge; opt-in via the **Send Telegram photo on freeze** checkbox
+  (disabled, with a hint, when no creds). Wiring only — no new tests.
+
+Next (step 7): wire the TelegramPoller back the other way (a phone reply types
+into the last frozen zone), then unify the three spikes into one app (multi-zone
+list, settings, tray); then step 8 packaging + signing.

@@ -60,6 +60,9 @@
     <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
       <input type="checkbox" id="inject" /> Press Enter on freeze (real nut.js)
     </label>
+    <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
+      <input type="checkbox" id="telegram" /> Send Telegram photo on freeze
+    </label>
     <div id="stage">
       <video id="video" autoplay muted></video>
       <div id="sel"></div>
@@ -71,6 +74,7 @@
       <div>similarity: <span id="sim">—</span></div>
       <div>state: <span id="state" class="ok">idle</span></div>
       <div>freeze edges (beep + Enter/notify fires once each): <span id="edge">0</span></div>
+      <div>telegram: <span id="tg" style="color: var(--muted)">off</span></div>
       <div id="size" style="color: var(--muted)">—</div>
       <div id="err"></div>
     </div>
