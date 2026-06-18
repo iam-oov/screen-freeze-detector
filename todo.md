@@ -7,6 +7,6 @@
 - etc
 
 5. eliminar la parte de python (codigo)
-6. siempre regresar un mensaje a telegram de la accion que se hizo para que el usuario sepa que se hizo algo
-7. Hilos para cancelar lo que se esta transcribiendo desde telegram
-8. boton para "cancelar" la transcripcion desde telegram
+6. Hilos para cancelar lo que se esta transcribiendo desde telegram
+7. boton para "cancelar" la transcripcion desde telegram
+8. comandos en telegram para ver el resumen de la tabla
