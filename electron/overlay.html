@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Select zones</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: #000; cursor: crosshair;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      #shot {
+        position: absolute; inset: 0; width: 100vw; height: 100vh;
+        display: block; user-select: none; -webkit-user-drag: none;
+      }
+      #bar {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+        padding: 11px 16px; text-align: center;
+        background: rgba(10, 10, 14, 0.72); color: #fff; font-size: 13px;
+        letter-spacing: 0.2px; backdrop-filter: blur(4px);
+      }
+      #bar b { color: #f5365c; }
+      .rect {
+        position: absolute; border: 2px solid #39ff14;
+        background: rgba(57, 255, 20, 0.12); pointer-events: none;
+      }
+      .rect .tag {
+        position: absolute; top: -20px; left: 0;
+        font-size: 11px; font-weight: 700; color: #0a0a0e;
+        background: #39ff14; padding: 0 5px; border-radius: 3px;
+      }
+      #sel {
+        position: absolute; display: none; pointer-events: none;
+        border: 2px dashed #39ff14; background: rgba(57, 255, 20, 0.12);
+      }
+      #dot {
+        position: absolute; display: none; pointer-events: none;
+        width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
+        background: #f5365c; border: 2px solid #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <img id="shot" alt="" />
+    <div id="bar"></div>
+    <div id="sel"></div>
+    <div id="dot"></div>
+    <script src="overlay.js"></script>
+  </body>
+</html>

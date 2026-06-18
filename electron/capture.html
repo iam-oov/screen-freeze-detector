@@ -2,115 +2,336 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>screensound — capture + compare spike</title>
+    <title>Screen Freeze Detector</title>
     <style>
       :root {
-        --bg: #141422;
-        --surface: #1c1c30;
-        --accent: #e8651a;
-        --text: #e8e8f0;
-        --muted: #8888a0;
-        --ok: #3ecf6a;
-        --err: #e05050;
+        --bg: #ffffff;
+        --soft: #fafafa;
+        --ink: #1a1a1f;
+        --muted: #9a9aa6;
+        --label: #8a8a96;
+        --line: #ececec;
+        --line-2: #e6e6e9;
+        --accent: #f5365c;
+        --accent-press: #e22a4e;
+        --dark: #16161a;
+        --ok: #21a366;
+        --ok-bg: #e7f7ef;
+        --warn: #b9870a;
+        --warn-bg: #fbf1cf;
+        --warn-bar: #f3c33b;
+        --frozen: #e0463e;
+        --frozen-bg: #fde8e7;
+        --tg: #2f8bff;
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0; padding: 20px;
-        font-family: system-ui, -apple-system, sans-serif;
-        background: var(--bg); color: var(--text);
+        margin: 0; background: var(--bg); color: var(--ink);
+        font-family: system-ui, -apple-system, sans-serif; font-size: 14px;
       }
-      h1 { font-size: 16px; margin: 0 0 4px; }
-      p.sub { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
-      button {
-        padding: 11px 16px; background: var(--accent); border: none;
-        border-radius: 6px; color: #fff; font-size: 14px; font-weight: 600;
-        cursor: pointer;
+      .muted { color: var(--muted); }
+      button { font-family: inherit; cursor: pointer; }
+
+      /* --- header --- */
+      .topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 20px; border-bottom: 1px solid var(--line);
       }
-      button:disabled { opacity: 0.5; cursor: default; }
-      #stage {
-        position: relative; margin-top: 16px; line-height: 0;
-        border-radius: 6px; overflow: hidden; cursor: crosshair;
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .logo {
+        width: 38px; height: 38px; border-radius: 11px; background: var(--accent);
+        display: grid; place-items: center; color: #fff;
+        box-shadow: 0 4px 12px rgba(245, 54, 92, 0.3);
       }
-      video { display: block; width: 100%; background: #000; }
-      #sel {
-        position: absolute; display: none; pointer-events: none;
-        border: 2px dashed #39ff14; background: rgba(57, 255, 20, 0.12);
+      .title-row { display: flex; align-items: center; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; font-weight: 700; }
+      .ver { font-size: 11px; color: var(--muted); margin-top: 1px; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
       }
-      .readout {
-        margin-top: 16px; padding: 14px; background: var(--surface);
-        border-radius: 6px; font-family: ui-monospace, monospace; font-size: 13px;
+      .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+      .badge-ok { color: var(--ok); background: var(--ok-bg); }
+      .badge-idle { color: var(--muted); background: #f1f1f4; }
+      .btn-toggle {
+        border: none; border-radius: 9px; padding: 10px 18px;
+        font-size: 14px; font-weight: 600; color: #fff; background: var(--accent);
+        display: inline-flex; align-items: center; gap: 8px;
       }
-      .readout div { margin: 4px 0; }
-      .frozen { color: var(--err); font-weight: 700; }
-      .ok { color: var(--ok); }
-      #err { color: var(--err); }
-      .zrect {
-        position: absolute; pointer-events: none;
-        border: 2px solid; border-radius: 2px;
+      .btn-toggle:hover { background: var(--accent-press); }
+      .btn-toggle.is-stopped { background: var(--dark); }
+
+      /* --- cards --- */
+      .card { border-bottom: 1px solid var(--line); }
+      .cfg-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 13px 20px; cursor: pointer; user-select: none;
       }
-      #zones { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
-      .zrow {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 10px; background: var(--surface);
-        border-radius: 6px; font-size: 13px;
+      .chevron { color: var(--muted); transition: transform 0.15s; }
+      .cfg.collapsed .chevron { transform: rotate(180deg); }
+      .cfg.collapsed .cfg-body { display: none; }
+      .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; }
+      .col { padding: 18px 22px 22px; }
+      .col-detect { background: var(--soft); border-right: 1px solid var(--line); }
+      .col-label {
+        display: flex; align-items: center; gap: 7px;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+        color: var(--label); text-transform: uppercase; margin-bottom: 16px;
       }
-      .zrow .sw { width: 12px; height: 12px; border-radius: 2px; flex: 0 0 auto; }
-      .zrow .nm { font-weight: 600; }
-      .zrow .st { margin-left: auto; font-family: ui-monospace, monospace; }
-      .zrow button { padding: 4px 9px; font-size: 12px; background: #3a3a55; }
-      .settings {
-        margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;
-        font-size: 13px; color: var(--muted); align-items: center;
+      .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      .col-head .col-label { margin-bottom: 0; }
+      .tgdot { width: 9px; height: 9px; border-radius: 50%; background: var(--tg); }
+
+      .field { margin-bottom: 16px; }
+      .field:last-child { margin-bottom: 0; }
+      .field-row { display: flex; align-items: baseline; justify-content: space-between; }
+      .field label { font-size: 13.5px; }
+      .field .val { font-size: 14px; font-weight: 700; }
+      .field-inline { display: flex; align-items: center; justify-content: space-between; }
+
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+        border-radius: 999px; background: var(--line); outline: none;
+        cursor: pointer; margin: 9px 0 0;
       }
-      .settings input {
-        width: 76px; margin-left: 6px; padding: 5px 7px;
-        background: var(--surface); color: var(--text);
-        border: 1px solid #2a2a44; border-radius: 5px;
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+        border-radius: 50%; background: #fff; border: 1px solid #cfcfd8;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); cursor: pointer;
       }
+
+      .stepper { display: inline-flex; align-items: center; gap: 0; }
+      .stepper button {
+        width: 30px; height: 30px; border: 1px solid var(--line-2); background: #fff;
+        color: var(--ink); font-size: 16px; line-height: 1;
+      }
+      .stepper button:first-child { border-radius: 8px 0 0 8px; }
+      .stepper button:last-child { border-radius: 0 8px 8px 0; }
+      .stepper input {
+        width: 44px; height: 30px; text-align: center; border: 1px solid var(--line-2);
+        border-left: 0; border-right: 0; background: #fff; color: var(--ink);
+        font-size: 14px; font-weight: 600;
+      }
+
+      .text-input {
+        width: 100%; padding: 9px 11px; border: 1px solid var(--line-2);
+        border-radius: 8px; background: #fff; color: var(--ink); font-size: 13.5px;
+        font-family: inherit;
+      }
+      .text-input::placeholder { color: #c2c2cc; }
+      .field > label { display: block; margin-bottom: 6px; }
+      .row-inline { display: flex; gap: 8px; }
+      .row-inline .text-input { flex: 1; }
+      .btn-dark {
+        border: none; border-radius: 8px; padding: 0 18px; background: var(--dark);
+        color: #fff; font-size: 13.5px; font-weight: 600;
+      }
+      .btn-outline {
+        border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 13px;
+        background: #fff; color: var(--ink); font-size: 13px; font-weight: 500;
+        display: inline-flex; align-items: center; gap: 7px;
+      }
+      .btn-outline:hover { background: var(--soft); }
+      .tg-status { font-size: 12px; min-height: 14px; }
+
+      /* toggle switch */
+      .switch { position: relative; display: inline-block; width: 42px; height: 24px; }
+      .switch.sm { width: 36px; height: 20px; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch .slider {
+        position: absolute; inset: 0; border-radius: 999px; background: #d7d7de;
+        transition: background 0.15s;
+      }
+      .switch .slider::before {
+        content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+        background: #fff; border-radius: 50%; transition: transform 0.15s;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      }
+      .switch.sm .slider::before { height: 14px; width: 14px; }
+      .switch input:checked + .slider { background: var(--dark); }
+      .switch input:checked + .slider::before { transform: translateX(18px); }
+      .switch.sm input:checked + .slider::before { transform: translateX(16px); }
+
+      /* --- zones --- */
+      .zones-card { padding: 18px 20px 4px; }
+      .zones-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+      .zones-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+      .chip {
+        font-size: 11px; font-weight: 600; color: var(--muted);
+        background: #f1f1f4; padding: 2px 9px; border-radius: 999px;
+      }
+      .zones-actions { display: flex; gap: 9px; }
+
+      .zhead, .zrow {
+        display: grid;
+        grid-template-columns: 1.7fr 70px 1.7fr 96px 78px 62px 70px;
+        align-items: center; gap: 10px;
+      }
+      .zhead {
+        font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: var(--label);
+        text-transform: uppercase; padding: 0 4px 8px; border-bottom: 1px solid var(--line);
+      }
+      .zhead .c-center, .zrow .c-center { text-align: center; }
+      .zrow { padding: 11px 4px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+      .zrow:last-child { border-bottom: 0; }
+      .zname { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .thumb {
+        width: 38px; height: 28px; border-radius: 5px; object-fit: cover;
+        background: #f1f1f4; border: 1px solid var(--line-2); flex: 0 0 auto;
+      }
+      .zdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+      .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .zsize { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .zsim { display: flex; align-items: center; gap: 9px; }
+      .simbar { flex: 1; height: 7px; border-radius: 999px; background: #eee; overflow: hidden; }
+      .simfill { height: 100%; width: 0; border-radius: 999px; background: var(--ok); transition: width 0.2s; }
+      .simfill.warn { background: var(--warn-bar); }
+      .simfill.frozen { background: var(--frozen); }
+      .simpct { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 50px; text-align: right; }
+      .pill { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+      .pill-ok { color: var(--ok); background: var(--ok-bg); }
+      .pill-warn { color: var(--warn); background: var(--warn-bg); }
+      .pill-frozen { color: var(--frozen); background: var(--frozen-bg); }
+      .zfrozen { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .zactive { display: flex; justify-content: center; }
+      .zactions { display: flex; gap: 4px; justify-content: flex-end; }
+      .ic {
+        border: none; background: none; color: var(--muted); padding: 5px; border-radius: 6px;
+        display: inline-flex; line-height: 0;
+      }
+      .ic:hover { background: var(--soft); color: var(--ink); }
+      .ic.del:hover { color: var(--frozen); }
+      .zempty { padding: 26px 4px; text-align: center; color: var(--muted); font-size: 13px; }
+
+      /* --- footer --- */
+      .footbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 11px 20px; background: var(--soft); border-top: 1px solid var(--line);
+        font-size: 12.5px; color: var(--muted);
+      }
+      .foot-right { display: inline-flex; align-items: center; gap: 6px; }
+      svg { display: block; }
     </style>
   </head>
   <body>
-    <h1>capture + compare spike</h1>
-    <p class="sub">
-      Start the preview, then <strong>drag rectangles over it</strong> to add
-      zones (drawn in real capture pixels — no DPI guesswork). Every zone is
-      monitored by the real FreezeMonitor: hold one still → it FREEZES, the Web
-      Audio alert beeps, and (if enabled) Enter + a Telegram photo fire. Remove a
-      zone from the list below. Start/stop with the button or hotkeys F9 / F10.
-    </p>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+        </div>
+        <div class="brand-txt">
+          <div class="title-row">
+            <h1>Screen Freeze Detector</h1>
+            <span id="runBadge" class="badge badge-idle"><span class="dot"></span> Stopped</span>
+          </div>
+          <div class="ver">v<span id="ver">…</span></div>
+        </div>
+      </div>
+      <button id="toggleBtn" class="btn-toggle is-stopped">Start</button>
+    </header>
 
-    <button id="start">Start (F9 / F10)</button>
-    <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
-      <input type="checkbox" id="inject" /> Press Enter on freeze (real nut.js)
-    </label>
-    <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
-      <input type="checkbox" id="telegram" /> Send Telegram photo on freeze
-    </label>
-    <label style="margin-left: 12px; font-size: 13px; color: var(--muted)">
-      <input type="checkbox" id="remote" /> Telegram remote: type replies into last frozen zone
-    </label>
-    <div class="settings">
-      <label>Threshold <input type="number" id="threshold" min="0" max="1" step="0.001" value="0.99" /></label>
-      <label>Interval ms <input type="number" id="interval" min="100" step="50" value="500" /></label>
-      <label>Consec frames <input type="number" id="consec" min="1" step="1" value="3" /></label>
-    </div>
+    <section class="card cfg" id="cfg">
+      <div class="cfg-head" id="cfgHeader">
+        <div><strong>Configuration</strong> &nbsp;<span class="muted">Detection &amp; Telegram</span></div>
+        <span id="cfgChevron" class="chevron">⌃</span>
+      </div>
+      <div class="cfg-body" id="cfgBody">
+        <div class="cfg-grid">
+          <div class="col col-detect">
+            <div class="col-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2c1 4-2 5-2 8a4 4 0 0 0 8 0c0-2-1-3-1-3 2 1 3 4 3 7a8 8 0 1 1-16 0c0-5 5-7 8-12z"/></svg>
+              Detection
+            </div>
+            <div class="field">
+              <div class="field-row"><label for="threshold">Similarity threshold</label><span id="thrVal" class="val">—</span></div>
+              <input type="range" id="threshold" min="0.9" max="1" step="0.001" value="0.99" />
+            </div>
+            <div class="field">
+              <div class="field-row"><label for="interval">Capture interval</label><span id="intVal" class="val">—</span></div>
+              <input type="range" id="interval" min="100" max="5000" step="50" value="500" />
+            </div>
+            <div class="field field-inline">
+              <label>Consecutive frames</label>
+              <div class="stepper">
+                <button id="consecMinus" type="button">−</button>
+                <input id="consec" type="text" inputmode="numeric" value="3" readonly />
+                <button id="consecPlus" type="button">+</button>
+              </div>
+            </div>
+            <div class="field field-inline">
+              <label for="inject">Press Enter on freeze</label>
+              <label class="switch"><input type="checkbox" id="inject" /><span class="slider"></span></label>
+            </div>
+          </div>
 
-    <div id="stage">
-      <video id="video" autoplay muted></video>
-      <div id="sel"></div>
-    </div>
+          <div class="col col-tg">
+            <div class="col-head">
+              <div class="col-label"><span class="tgdot"></span> Telegram · Remote control</div>
+              <span id="tgBadge" class="badge badge-idle"><span class="dot"></span> Not set</span>
+            </div>
+            <div class="field">
+              <label for="tgToken">Bot token</label>
+              <input type="password" id="tgToken" class="text-input" placeholder="123456:ABC-DEF..." />
+            </div>
+            <div class="field">
+              <label for="tgChat">Chat ID</label>
+              <div class="row-inline">
+                <input type="text" id="tgChat" class="text-input" placeholder="123456789" />
+                <button id="tgSave" class="btn-dark">Save</button>
+              </div>
+            </div>
+            <div class="field field-inline">
+              <label for="telegram">Send zone image on freeze</label>
+              <label class="switch"><input type="checkbox" id="telegram" /><span class="slider"></span></label>
+            </div>
+            <div class="field field-inline">
+              <button id="defocusBtn" class="btn-outline">Defocus click</button>
+              <span id="defocusStatus" class="muted">No point set</span>
+            </div>
+            <div id="tg" class="tg-status muted"></div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <div class="readout">
-      <div>status: <span id="status">idle</span></div>
-      <div>zones: <span id="zcount">0 (drag on the preview to add)</span></div>
-      <div>freeze edges (beep + Enter/notify fires once each): <span id="edge">0</span></div>
-      <div>telegram: <span id="tg" style="color: var(--muted)">off</span></div>
-      <div id="size" style="color: var(--muted)">—</div>
-      <div id="err"></div>
-    </div>
+    <section class="card zones-card">
+      <div class="zones-head">
+        <div class="zones-title">Watched zones <span id="zCount" class="chip">0 active</span></div>
+        <div class="zones-actions">
+          <button id="selectBtn" class="btn-outline">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            Select zones
+          </button>
+          <button id="showBtn" class="btn-outline">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/></svg>
+            Show zones
+          </button>
+        </div>
+      </div>
+      <div class="ztable">
+        <div class="zhead">
+          <span>Zone</span><span>Size</span><span>Similarity</span><span>State</span>
+          <span class="c-center">Frozen</span><span class="c-center">Active</span><span class="c-center">Actions</span>
+        </div>
+        <div id="zones"></div>
+      </div>
+    </section>
 
-    <div id="zones"></div>
+    <footer class="footbar">
+      <span id="footStatus">Idle — select zones to begin</span>
+      <span class="foot-right">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span id="lastCheck">—</span>
+      </span>
+    </footer>
 
+    <video
+      id="video"
+      autoplay
+      muted
+      playsinline
+      style="position: fixed; left: -10000px; top: 0; width: 320px; height: 200px; opacity: 0; pointer-events: none"
+    ></video>
     <script src="capture-spike.js"></script>
   </body>
 </html>

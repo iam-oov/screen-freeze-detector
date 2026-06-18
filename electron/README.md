@@ -66,14 +66,27 @@ You may need to quit and relaunch after granting.
 
 ## Using it
 
-1. **Start** (or **F9**) to begin the screen preview.
-2. **Drag rectangles** over the preview to add zones (each shows in the list).
-3. Tick the side-effect checkboxes you want: **Press Enter on freeze**, **Send
-   Telegram photo on freeze**, **Telegram remote** (a chat reply types into the
-   last frozen zone). Tune **Threshold / Interval / Consec frames** live.
-4. Hold a zone still → it FREEZES: the alert beeps, and the enabled side effects
-   fire once on the edge. The tray mirrors Start/Stop and keeps the app alive
-   when you close the window.
+The UI is a light-theme single window: a header (Start/Stop · **F9/F10**), a
+collapsible **Configuration** panel (Detection sliders + Telegram), and a
+**Watched zones** table. (Hotkeys + detection defaults live in `constants.js`.)
+
+1. Click **Select zones** → the app hides itself and opens a **fullscreen
+   overlay** of your screen. Drag rectangles (right-click undo, **Enter**
+   confirm, **Esc** cancel). Each becomes a row with a thumbnail, similarity bar,
+   state pill, frozen count, and per-zone Active + Sound toggles. **Show zones**
+   re-opens the overlay read-only.
+2. **Start · F9** (header button, hotkey, or tray) begins monitoring; **F10**
+   stops. Tune **Similarity threshold / Capture interval / Consecutive frames**
+   live.
+3. Toggle the side effects: **Press Enter on freeze**, **Send zone image on
+   freeze**, and **Defocus click** (a point clicked after a typed Telegram reply
+   so the caret stops blinking). Telegram **Bot token + Chat ID** are editable;
+   **Save** writes `~/.config/screensound/.env` and the badge flips to
+   *Connected*; the remote poller then types chat replies into the last frozen
+   zone.
+4. Hold a zone still → it FREEZES: the alert beeps and the enabled side effects
+   fire once on the edge. Closing the window (✕) quits the app; the tray can
+   hide/show the window while it's open.
 
 ## Migration progress
 
@@ -174,6 +187,18 @@ You may need to quit and relaunch after granting.
   (auto-converted to `.icns` on macOS), `tray-icon.png` bundled, native nut.js
   unpacked from the asar, `.env` excluded from the package. Scripts: `pnpm pack`
   (quick `.app`) / `pnpm dist` (DMG).
+
+- **Redesign (light theme, full UI)** — ✅ the app was rebuilt to a polished
+  light-theme design: header + collapsible Configuration (Detection sliders /
+  stepper / toggles, editable+savable Telegram creds, defocus click) + a Watched
+  zones table (thumbnail, similarity bar, state pill, frozen count, per-zone
+  Active + Sound toggles). Zone selection moved to a **fullscreen overlay**
+  (`overlay.html` / `src/overlay.ts`) — full-screen precision with the same
+  DPI-free `cssRectToBbox` mapping (it grabs the same getDisplayMedia frame the
+  monitor samples). Hotkeys + detection defaults centralized in `constants.js`
+  (start/stop = **F9/F10**). New main IPC: save creds (to
+  `~/.config/screensound/.env`, 0600), open overlay, get version, defocus click
+  in `run-injection`. UI text English; version reads `VERSION` (1.6.0).
 
 Optional polish (deferred): Developer ID signing + notarization (stable TCC
 permissions, distributable); rename `capture.html` / `capture-spike.ts` (the
