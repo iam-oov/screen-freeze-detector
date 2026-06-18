@@ -479,6 +479,11 @@ window.spike.getTelegramConfig().then(({ token, chatId }: { token: string; chatI
   applyCreds(token, chatId);
 });
 selectLbl.textContent = `Select zones · ${HOTKEYS.select}`;
+// constants.js DEFAULTS drive the initial control values (the HTML attributes
+// are just pre-JS placeholders).
+thresholdEl.value = String(DEFAULT_THRESHOLD);
+intervalEl.value = String(DEFAULT_INTERVAL_MS);
+consecEl.value = String(DEFAULT_CONSEC);
 refreshDetectionLabels();
 refreshEmpty();
 setRunning(false);
