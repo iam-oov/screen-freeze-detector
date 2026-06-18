@@ -109,4 +109,16 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   photo** → a gradient image lands on your phone; **Start poller** → message
   your bot from the configured chat and it shows up (other chats are ignored).
 
-Next: the real UI + zone selector (the actual goal), then packaging + signing.
+- **Step 6 (zone selector)** — ✅ in the capture spike: after Start, **drag a
+  rectangle over the live preview** to pick the zone to monitor. The drawn rect
+  is mapped from the video's displayed CSS pixels into capture pixels
+  (`cssRectToBbox`), so the zone lives in the exact frame `grabRegion` samples —
+  no logical-vs-physical (Retina/DPI) mapping needed. Until you draw one it
+  watches the centered region. `pnpm test` covers the mapping (3 tests).
+
+  Tradeoff: the preview is scaled down, so small zones are picked coarsely —
+  resize the window bigger for precision. A production overlay (fullscreen
+  screenshot, draw zones at native resolution) would be more precise but must
+  solve the DPI mapping this approach sidesteps.
+
+Next: the real app UI (multi-zone list, settings, tray), then packaging + signing.
