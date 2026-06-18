@@ -1,0 +1,16 @@
+{
+  "name": "screensound-electron-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Spike: prove nut.js can inject synthetic input (move+click+type+Enter) into other apps on macOS — the make-or-break feature for migrating screensound to Electron.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.3.1"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.0"
+  }
+}
