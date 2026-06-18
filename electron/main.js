@@ -20,6 +20,7 @@ const {
   session,
   globalShortcut,
   screen,
+  clipboard,
   Tray,
   Menu,
   nativeImage,
@@ -203,9 +204,9 @@ ipcMain.handle("set-window-visible", (_e, visible) => {
   }
 });
 
-// Move to the target point -> click (steal focus) -> type text -> Enter, then an
+// Move to the target point -> click (steal focus) -> paste text -> Enter, then an
 // optional defocus click (drops the blinking caret so the zone can re-freeze).
-ipcMain.handle("run-injection", async (_evt, { x, y, text, defocus }) => {
+async function doInjection({ x, y, text, defocus }) {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || "nut.js not loaded" };
   }
@@ -216,8 +217,19 @@ ipcMain.handle("run-injection", async (_evt, { x, y, text, defocus }) => {
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
     steps.push("clicked (focus stolen)");
-    await keyboard.type(text);
-    steps.push(`typed: ${JSON.stringify(text)}`);
+    if (text) {
+      // Paste via the clipboard instead of keyboard.type: nut.js drops accented /
+      // non-ASCII characters (they go through dead keys). Set the clipboard, send
+      // the OS paste chord, then restore the user's previous clipboard.
+      const prevClip = clipboard.readText();
+      clipboard.writeText(text);
+      const pasteMod = process.platform === "darwin" ? Key.LeftCmd : Key.LeftControl;
+      await keyboard.pressKey(pasteMod, Key.V);
+      await keyboard.releaseKey(pasteMod, Key.V);
+      steps.push(`pasted: ${JSON.stringify(text)}`);
+      await new Promise((r) => setTimeout(r, 150));
+      clipboard.writeText(prevClip);
+    }
     await keyboard.type(Key.Enter);
     steps.push("pressed Enter");
     if (defocus && typeof defocus.x === "number") {
@@ -230,4 +242,14 @@ ipcMain.handle("run-injection", async (_evt, { x, y, text, defocus }) => {
     // On macOS the most likely cause is missing Accessibility permission.
     return { ok: false, steps, error: String(err && err.message ? err.message : err) };
   }
+}
+
+// Serialize injections: each request waits for the previous to finish, so a new
+// one (e.g. tapping a 2nd zone before a long reply finishes) never interleaves on
+// the shared keyboard/mouse/clipboard and splits a message.
+let injectionChain = Promise.resolve();
+ipcMain.handle("run-injection", (_evt, params) => {
+  const run = injectionChain.then(() => doInjection(params));
+  injectionChain = run.catch(() => {});
+  return run;
 });

@@ -336,9 +336,11 @@ const notifier = {
       const frozen = zones
         .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
         .map((zz) => zz.config.name);
-      // Buttons first, then the screenshot — serialized so order is deterministic.
+      // Always offer the buttons (even for a single zone) so you can target the
+      // right zone with one tap, regardless of where your focus is. Buttons first,
+      // then the screenshot — serialized so order is deterministic.
       tgEnqueue(async () => {
-        if (frozen.length >= 2) await tg.sendChooser(frozen);
+        await tg.sendChooser(frozen);
         await tg.notifyFrozen(frame, name);
       });
     }

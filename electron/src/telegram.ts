@@ -96,13 +96,17 @@ export class TelegramNotifier implements RemoteNotifier {
 
   private async sendChooserMessage(codes: string[]): Promise<void> {
     try {
+      const n = codes.length;
       const form = new FormData();
       form.append("chat_id", this.chatId);
-      form.append("text", `${codes.length} zones frozen — tap to send Enter, then reply to type:`);
-      form.append(
-        "reply_markup",
-        JSON.stringify({ inline_keyboard: codes.map((c) => [{ text: c, callback_data: c }]) }),
-      );
+      form.append("text", `${n} zone${n === 1 ? "" : "s"} frozen — tap to send Enter, then reply to type:`);
+      // 4 buttons per row (Telegram allows up to 8) so the chooser stays compact.
+      const PER_ROW = 4;
+      const rows: { text: string; callback_data: string }[][] = [];
+      for (let i = 0; i < codes.length; i += PER_ROW) {
+        rows.push(codes.slice(i, i + PER_ROW).map((c) => ({ text: c, callback_data: c })));
+      }
+      form.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
       const res = await fetch(`${API}/bot${this.token}/sendMessage`, { method: "POST", body: form });
       this.onStatus(res.ok ? `sent chooser (${codes.length})` : `chooser failed: HTTP ${res.status}`);
     } catch (e) {
