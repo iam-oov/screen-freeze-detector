@@ -38,6 +38,18 @@ pnpm rebuild electron
 Verify it worked: `node -e "console.log(require('electron'))"` should print a
 path ending in `/dist/electron`, not throw.
 
+### Linux: "The SUID sandbox helper binary ... is not configured correctly"
+
+Linux-only (does NOT happen on macOS). Chromium's sandbox helper must be SUID
+root. For a throwaway spike, just disable the sandbox:
+
+```bash
+pnpm start -- --no-sandbox
+```
+
+(The proper fix, if you care: `sudo chown root:root <dist>/chrome-sandbox &&
+sudo chmod 4755 <dist>/chrome-sandbox`. Don't ship `--no-sandbox` in a real app.)
+
 ## Grant permission (macOS)
 
 Synthetic input requires Accessibility permission. The first run will fail until
