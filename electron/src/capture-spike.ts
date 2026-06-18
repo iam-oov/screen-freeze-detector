@@ -1,5 +1,5 @@
 // Step-3/4 spike renderer: capture the screen and run the REAL FreezeMonitor
-// (domain) over it, with the Web Audio alert wired to the freeze and F11/F12
+// (domain) over it, with the Web Audio alert wired to the freeze and F9/F10
 // global hotkeys driving start/stop. This now exercises the full edge-trigger
 // orchestration on live pixels.
 import {
@@ -80,7 +80,7 @@ async function startMonitoring(): Promise<void> {
     }
     state.reset();
     timer = setInterval(tick, INTERVAL_MS);
-    statusEl.textContent = "monitoring (F12 to stop)";
+    statusEl.textContent = "monitoring (F10 to stop)";
   } catch (e) {
     errEl.textContent =
       "capture failed: " +
@@ -94,7 +94,7 @@ function stopMonitoring(): void {
     clearInterval(timer);
     timer = null;
   }
-  statusEl.textContent = "stopped (Start or F11 to begin)";
+  statusEl.textContent = "stopped (Start or F9 to begin)";
 }
 
 startBtn.addEventListener("click", () => void startMonitoring());

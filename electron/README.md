@@ -83,7 +83,7 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
   pnpm start:capture
   ```
 
-  Click **Start** (or press **F11**; **F12** stops). Hold the screen still → it
+  Click **Start** (or press **F9**; **F10** stops). Hold the screen still → it
   FREEZES and the Web Audio alert beeps each tick; move a window or play a video
   → it breaks. On macOS the first capture prompts for **Screen Recording**
   permission (System Settings → Privacy & Security).
@@ -94,7 +94,7 @@ Log shows `FAILED ❌` → read the error; usually missing Accessibility permiss
 
 - **Step 4 (sound + global hotkeys)** — ✅ wired into the capture spike above:
   `WebAudioSound` (two 880Hz beeps, cooldown) plays on the freeze via the real
-  `FreezeMonitor`; `globalShortcut` F11/F12 start/stop monitoring.
+  `FreezeMonitor`; `globalShortcut` F9/F10 start/stop monitoring.
 
 Next: Telegram (notifier + poller), then the real UI + zone selector, then
 packaging + signing.

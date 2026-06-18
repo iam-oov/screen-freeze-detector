@@ -46,9 +46,9 @@ function createWindow() {
   win.loadFile(path.join(__dirname, CAPTURE ? "capture.html" : "index.html"));
 
   if (CAPTURE) {
-    // Global F11/F12 mirror the Python app's start/stop monitoring hotkeys.
-    globalShortcut.register("F11", () => win.webContents.send("hotkey", "start"));
-    globalShortcut.register("F12", () => win.webContents.send("hotkey", "stop"));
+    // Global F9/F10 start/stop monitoring.
+    globalShortcut.register("F9", () => win.webContents.send("hotkey", "start"));
+    globalShortcut.register("F10", () => win.webContents.send("hotkey", "stop"));
   }
 }
 
