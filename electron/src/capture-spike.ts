@@ -77,6 +77,7 @@ interface Zone {
   simfill: HTMLElement;
   simpct: HTMLElement;
   pill: HTMLElement;
+  progEl: HTMLElement;
   frozenEl: HTMLElement;
 }
 const zones: Zone[] = [];
@@ -199,6 +200,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     `<span class="zsize">${x2 - x1}×${y2 - y1}</span>` +
     '<div class="zsim"><div class="simbar"><div class="simfill"></div></div><span class="simpct">—</span></div>' +
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
+    '<span class="zprog c-center">—</span>' +
     '<span class="zfrozen c-center">0</span>' +
     '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" checked /><span class="slider"></span></label></span>' +
     `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic tg" title="Send to Telegram on freeze">${SVG_TG}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
@@ -214,6 +216,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     simfill: q<HTMLElement>(".simfill"),
     simpct: q<HTMLElement>(".simpct"),
     pill: q<HTMLElement>(".pill"),
+    progEl: q<HTMLElement>(".zprog"),
     frozenEl: q<HTMLElement>(".zfrozen"),
   };
   (q<HTMLElement>(".nm")).textContent = config.name;
@@ -258,6 +261,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
   tg.addEventListener("click", () => {
     config.telegramEnabled = !config.telegramEnabled;
     paintTg();
+    updateDefocusWarning();
   });
   q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
 
@@ -273,6 +277,28 @@ function removeZone(zone: Zone): void {
   if (i >= 0) zones.splice(i, 1);
   refreshEmpty();
   refreshCounts();
+  updateDefocusWarning();
+}
+
+// A zone has Telegram enabled but no global defocus point is set. Typed Telegram
+// replies would then leave a blinking caret on the focused input, whose pixels
+// keep toggling, so the zone never re-freezes. Warn so it isn't forgotten.
+// (Only typed replies need it — photo send and the Enter command don't.)
+function updateDefocusWarning(): void {
+  const needsDefocus = defocusPoint === null && zones.some((z) => z.config.telegramEnabled);
+  defocusBtn.classList.toggle("warn", needsDefocus);
+  if (defocusPoint) {
+    defocusStatus.textContent = `Point at (${defocusPoint.x}, ${defocusPoint.y})`;
+    defocusStatus.classList.remove("warn");
+  } else {
+    defocusStatus.textContent = needsDefocus
+      ? "⚠ Set a defocus point — replies won't re-freeze"
+      : "No point set";
+    defocusStatus.classList.toggle("warn", needsDefocus);
+  }
+  for (const z of zones) {
+    z.row.querySelector(".tg")?.classList.toggle("warn", needsDefocus && z.config.telegramEnabled);
+  }
 }
 
 function activeCount(): number {
@@ -359,6 +385,9 @@ function paintZone(z: Zone): void {
   z.simpct.textContent = `${pct.toFixed(1)}%`;
   z.pill.textContent = kind === "frozen" ? "Frozen" : kind === "warn" ? "Watching" : "OK";
   z.pill.className = `pill pill-${kind}`;
+  // Consecutive near-identical captures so far, toward the freeze threshold.
+  const need = consec();
+  z.progEl.textContent = `${Math.min(s.frozenCount, need)}/${need}`;
   z.dot.style.background = kind === "frozen" ? "var(--frozen)" : kind === "warn" ? "var(--warn-bar)" : "var(--ok)";
 }
 
@@ -472,7 +501,7 @@ defocusBtn.addEventListener("click", () => {
     });
     if (res && res.point) {
       defocusPoint = res.point;
-      defocusStatus.textContent = `Point at (${res.point.x}, ${res.point.y})`;
+      updateDefocusWarning();
     }
   });
 });

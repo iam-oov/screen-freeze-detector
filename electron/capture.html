@@ -138,6 +138,13 @@
       .btn-outline:hover { background: var(--soft); }
       .btn-outline:disabled { opacity: 0.45; cursor: default; }
       .btn-outline:disabled:hover { background: #fff; }
+      .btn-outline.warn { border-color: var(--warn-bar); background: var(--warn-bg); color: var(--warn); }
+      #defocusStatus.warn {
+        display: inline-flex; align-items: center; gap: 5px;
+        color: var(--warn); background: var(--warn-bg);
+        border: 1px solid var(--warn-bar); border-radius: 999px;
+        padding: 3px 14px; margin-left: 14px; font-size: 12px; font-weight: 600;
+      }
       .tg-status { font-size: 12px; min-height: 14px; }
 
       /* toggle switch */
@@ -170,7 +177,7 @@
 
       .zhead, .zrow {
         display: grid;
-        grid-template-columns: 1.4fr 64px 1.4fr 84px 62px 54px 118px;
+        grid-template-columns: 1.4fr 64px 1.4fr 84px 64px 62px 54px 118px;
         align-items: center; gap: 10px;
       }
       .zhead {
@@ -207,6 +214,13 @@
       }
       .ic:hover { background: var(--soft); color: var(--ink); }
       .ic.del:hover { color: var(--frozen); }
+      .ic.tg.warn { position: relative; }
+      .ic.tg.warn::after {
+        content: "!"; position: absolute; top: -1px; right: -1px;
+        min-width: 12px; height: 12px; padding: 0 2px; border-radius: 999px;
+        background: var(--warn-bar); color: #fff;
+        font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
+      }
       .zempty { padding: 26px 4px; text-align: center; color: var(--muted); font-size: 13px; }
 
       /* --- footer --- */
@@ -315,7 +329,7 @@
       <div class="ztable">
         <div class="zhead">
           <span>Zone</span><span>Size</span><span>Similarity</span><span>State</span>
-          <span class="c-center">Frozen</span><span class="c-center">Active</span><span class="c-center">Actions</span>
+          <span class="c-center">Progress</span><span class="c-center">Frozen</span><span class="c-center">Active</span><span class="c-center">Actions</span>
         </div>
         <div id="zones"></div>
       </div>

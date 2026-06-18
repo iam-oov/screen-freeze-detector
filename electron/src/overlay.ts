@@ -65,7 +65,7 @@ function drawRect(c: CssRect, n: number, dim = false): HTMLElement {
   const r = document.createElement("div");
   r.className = dim ? "rect dim" : "rect";
   r.style.cssText = `left:${c.left}px;top:${c.top}px;width:${c.width}px;height:${c.height}px`;
-  r.innerHTML = `<span class="tag">${n}</span>`;
+  r.innerHTML = `<span class="tag">z${n}</span>`;
   document.body.appendChild(r);
   return r;
 }
