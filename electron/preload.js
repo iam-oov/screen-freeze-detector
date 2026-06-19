@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("spike", {
   onHotkey: (callback) => ipcRenderer.on("hotkey", (_e, which) => callback(which)),
   getTelegramConfig: () => ipcRenderer.invoke("get-telegram-config"),
   saveTelegramConfig: (params) => ipcRenderer.invoke("save-telegram-config", params),
+  getSettings: () => ipcRenderer.invoke("get-settings"),
+  saveSettings: (data) => ipcRenderer.invoke("save-settings", data),
   getVersion: () => ipcRenderer.invoke("get-version"),
   // Opens the fullscreen overlay; resolves with the result:
   //   select  -> { zones: Bbox[] } | null

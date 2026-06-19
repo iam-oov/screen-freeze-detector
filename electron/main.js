@@ -8,10 +8,10 @@
 // windows); main owns it and the renderer drives it over the preload bridge.
 // Zone selection happens in a separate fullscreen overlay window.
 
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
-const { HOTKEYS } = require("./constants.js");
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { HOTKEYS } = require('./constants.js');
 const {
   app,
   BrowserWindow,
@@ -24,40 +24,42 @@ const {
   Tray,
   Menu,
   nativeImage,
-} = require("electron");
+} = require('electron');
 
 // Persisted creds live in the user's XDG config dir (mirrors the Python app).
 const CONFIG_DIR = path.join(
-  process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
-  "screensound",
+  process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'),
+  'screensound',
 );
-const ENV_FILE = path.join(CONFIG_DIR, ".env");
+const ENV_FILE = path.join(CONFIG_DIR, '.env');
+const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
 // Telegram creds — real env vars win over the .env files (first-set wins).
 function loadEnvFile(p) {
   try {
-    for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+    for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
       const t = line.trim();
-      if (!t || t.startsWith("#") || !t.includes("=")) continue;
-      const eq = t.indexOf("=");
+      if (!t || t.startsWith('#') || !t.includes('=')) continue;
+      const eq = t.indexOf('=');
       const k = t.slice(0, eq).trim();
       if (k in process.env) continue;
-      process.env[k] = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+      process.env[k] = t
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, '');
     }
   } catch {
     /* no .env — fine, creds can be typed + saved in the UI */
   }
 }
 loadEnvFile(ENV_FILE); // saved creds win over leftover repo .env files
-loadEnvFile(path.join(__dirname, ".env"));
-loadEnvFile(path.join(__dirname, "..", ".env"));
+loadEnvFile(path.join(__dirname, '.env'));
+loadEnvFile(path.join(__dirname, '..', '.env'));
 
-// Loaded lazily so the window still opens (and can report the failure) when the
-// native module is missing or failed to build.
 let nut = null;
 let nutError = null;
 try {
-  nut = require("@nut-tree-fork/nut-js");
+  nut = require('@nut-tree-fork/nut-js');
 } catch (err) {
   nutError = err.message;
 }
@@ -67,19 +69,29 @@ let tray = null;
 let mainWin = null;
 
 function createTray(win) {
-  tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "tray-icon.png")));
-  tray.setToolTip("screensound");
+  tray = new Tray(
+    nativeImage.createFromPath(path.join(__dirname, 'tray-icon.png')),
+  );
+  tray.setToolTip('screensound');
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Show", click: () => (win.show(), win.focus()) },
-      { type: "separator" },
-      { label: `Start monitoring (${HOTKEYS.start})`, click: () => win.webContents.send("hotkey", "start") },
-      { label: `Stop monitoring (${HOTKEYS.stop})`, click: () => win.webContents.send("hotkey", "stop") },
-      { type: "separator" },
-      { label: "Quit", click: () => app.quit() },
+      { label: 'Show', click: () => (win.show(), win.focus()) },
+      { type: 'separator' },
+      {
+        label: `Start monitoring (${HOTKEYS.start})`,
+        click: () => win.webContents.send('hotkey', 'start'),
+      },
+      {
+        label: `Stop monitoring (${HOTKEYS.stop})`,
+        click: () => win.webContents.send('hotkey', 'stop'),
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
     ]),
   );
-  tray.on("click", () => (win.isVisible() ? win.hide() : (win.show(), win.focus())));
+  tray.on('click', () =>
+    win.isVisible() ? win.hide() : (win.show(), win.focus()),
+  );
 }
 
 function createWindow() {
@@ -87,20 +99,26 @@ function createWindow() {
     width: 760,
     height: 800,
     resizable: true,
-    backgroundColor: "#ffffff",
+    backgroundColor: '#ffffff',
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, 'preload.js'),
       // Let the Web Audio alert play when monitoring starts via hotkey
       // (no click gesture to satisfy the autoplay policy).
-      autoplayPolicy: "no-user-gesture-required",
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
-  mainWin.loadFile(path.join(__dirname, "capture.html"));
+  mainWin.loadFile(path.join(__dirname, 'capture.html'));
 
   // Global hotkeys (see constants.js).
-  globalShortcut.register(HOTKEYS.start, () => mainWin.webContents.send("hotkey", "start"));
-  globalShortcut.register(HOTKEYS.stop, () => mainWin.webContents.send("hotkey", "stop"));
-  globalShortcut.register(HOTKEYS.select, () => mainWin.webContents.send("hotkey", "select"));
+  globalShortcut.register(HOTKEYS.start, () =>
+    mainWin.webContents.send('hotkey', 'start'),
+  );
+  globalShortcut.register(HOTKEYS.stop, () =>
+    mainWin.webContents.send('hotkey', 'stop'),
+  );
+  globalShortcut.register(HOTKEYS.select, () =>
+    mainWin.webContents.send('hotkey', 'select'),
+  );
   createTray(mainWin);
   // Closing the window quits the app (window-all-closed -> app.quit()). The tray
   // can still hide/show the window while it's open.
@@ -110,7 +128,16 @@ function createWindow() {
 // hands us a screenshot (a dataURL from the SAME getDisplayMedia frame it samples
 // during monitoring, so the bbox coordinate space matches). Resolves with the
 // overlay's result, or null if cancelled/closed.
-function openOverlay({ mode, dataURL, frameW, frameH, zones, captures, detection, current }) {
+function openOverlay({
+  mode,
+  dataURL,
+  frameW,
+  frameH,
+  zones,
+  captures,
+  detection,
+  current,
+}) {
   return new Promise((resolve) => {
     const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
     const overlay = new BrowserWindow({
@@ -119,19 +146,28 @@ function openOverlay({ mode, dataURL, frameW, frameH, zones, captures, detection
       width,
       height,
       frame: false,
-      backgroundColor: "#000000",
+      backgroundColor: '#000000',
       alwaysOnTop: true,
       resizable: false,
       movable: false,
       hasShadow: false,
       skipTaskbar: true,
-      webPreferences: { preload: path.join(__dirname, "preload.js") },
+      webPreferences: { preload: path.join(__dirname, 'preload.js') },
     });
-    overlay.setAlwaysOnTop(true, "screen-saver");
-    if (process.platform === "darwin") overlay.setSimpleFullScreen(true);
-    overlay.loadFile(path.join(__dirname, "overlay.html"));
-    overlay.webContents.once("did-finish-load", () => {
-      overlay.webContents.send("overlay-init", { mode, dataURL, frameW, frameH, zones, captures, detection, current });
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    if (process.platform === 'darwin') overlay.setSimpleFullScreen(true);
+    overlay.loadFile(path.join(__dirname, 'overlay.html'));
+    overlay.webContents.once('did-finish-load', () => {
+      overlay.webContents.send('overlay-init', {
+        mode,
+        dataURL,
+        frameW,
+        frameH,
+        zones,
+        captures,
+        detection,
+        current,
+      });
     });
 
     let settled = false;
@@ -140,9 +176,9 @@ function openOverlay({ mode, dataURL, frameW, frameH, zones, captures, detection
       resolve(result);
       if (!overlay.isDestroyed()) overlay.close();
     };
-    ipcMain.once("overlay-done", onDone);
-    overlay.on("closed", () => {
-      ipcMain.removeListener("overlay-done", onDone);
+    ipcMain.once('overlay-done', onDone);
+    overlay.on('closed', () => {
+      ipcMain.removeListener('overlay-done', onDone);
       if (!settled) resolve(null);
     });
   });
@@ -152,29 +188,30 @@ app.whenReady().then(() => {
   // Auto-select the screen so getDisplayMedia() resolves without a source picker.
   // macOS still gates the first capture behind the Screen Recording prompt.
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       callback(sources.length ? { video: sources[0] } : {});
     });
   });
   createWindow();
 });
 
-app.on("will-quit", () => globalShortcut.unregisterAll());
-app.on("window-all-closed", () => app.quit());
+app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('window-all-closed', () => app.quit());
 
 // --- IPC ------------------------------------------------------------------
 
-ipcMain.handle("get-telegram-config", () => ({
-  token: process.env.SCREENSOUND_TELEGRAM_TOKEN || "",
-  chatId: process.env.SCREENSOUND_TELEGRAM_CHAT_ID || "",
+ipcMain.handle('get-telegram-config', () => ({
+  token: process.env.SCREENSOUND_TELEGRAM_TOKEN || '',
+  chatId: process.env.SCREENSOUND_TELEGRAM_CHAT_ID || '',
 }));
 
 // Persist creds to ~/.config/screensound/.env (0600), like the Python app.
-ipcMain.handle("save-telegram-config", (_e, { token, chatId }) => {
+ipcMain.handle('save-telegram-config', (_e, { token, chatId }) => {
   try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
     const body =
-      `SCREENSOUND_TELEGRAM_TOKEN=${token}\n` + `SCREENSOUND_TELEGRAM_CHAT_ID=${chatId}\n`;
+      `SCREENSOUND_TELEGRAM_TOKEN=${token}\n` +
+      `SCREENSOUND_TELEGRAM_CHAT_ID=${chatId}\n`;
     fs.writeFileSync(ENV_FILE, body, { mode: 0o600 });
     process.env.SCREENSOUND_TELEGRAM_TOKEN = token;
     process.env.SCREENSOUND_TELEGRAM_CHAT_ID = chatId;
@@ -184,17 +221,37 @@ ipcMain.handle("save-telegram-config", (_e, { token, chatId }) => {
   }
 });
 
-ipcMain.handle("get-version", () => {
+ipcMain.handle('get-settings', () => {
   try {
-    return fs.readFileSync(path.join(__dirname, "..", "VERSION"), "utf8").trim();
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('save-settings', (_e, data) => {
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle('get-version', () => {
+  try {
+    return fs
+      .readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8')
+      .trim();
   } catch {
     return app.getVersion();
   }
 });
 
-ipcMain.handle("open-overlay", (_e, params) => openOverlay(params));
+ipcMain.handle('open-overlay', (_e, params) => openOverlay(params));
 
-ipcMain.handle("set-window-visible", (_e, visible) => {
+ipcMain.handle('set-window-visible', (_e, visible) => {
   if (!mainWin) return;
   if (visible) {
     mainWin.show();
@@ -208,7 +265,7 @@ ipcMain.handle("set-window-visible", (_e, visible) => {
 // optional defocus click (drops the blinking caret so the zone can re-freeze).
 async function doInjection({ x, y, text, defocus }) {
   if (!nut) {
-    return { ok: false, steps: [], error: nutError || "nut.js not loaded" };
+    return { ok: false, steps: [], error: nutError || 'nut.js not loaded' };
   }
   const { mouse, keyboard, Point, Button, Key } = nut;
   const steps = [];
@@ -216,14 +273,15 @@ async function doInjection({ x, y, text, defocus }) {
     await mouse.setPosition(new Point(x, y));
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
-    steps.push("clicked (focus stolen)");
+    steps.push('clicked (focus stolen)');
     if (text) {
       // Paste via the clipboard instead of keyboard.type: nut.js drops accented /
       // non-ASCII characters (they go through dead keys). Set the clipboard, send
       // the OS paste chord, then restore the user's previous clipboard.
       const prevClip = clipboard.readText();
       clipboard.writeText(text);
-      const pasteMod = process.platform === "darwin" ? Key.LeftCmd : Key.LeftControl;
+      const pasteMod =
+        process.platform === 'darwin' ? Key.LeftCmd : Key.LeftControl;
       await keyboard.pressKey(pasteMod, Key.V);
       await keyboard.releaseKey(pasteMod, Key.V);
       steps.push(`pasted: ${JSON.stringify(text)}`);
@@ -231,8 +289,8 @@ async function doInjection({ x, y, text, defocus }) {
       clipboard.writeText(prevClip);
     }
     await keyboard.type(Key.Enter);
-    steps.push("pressed Enter");
-    if (defocus && typeof defocus.x === "number") {
+    steps.push('pressed Enter');
+    if (defocus && typeof defocus.x === 'number') {
       await mouse.setPosition(new Point(defocus.x, defocus.y));
       await mouse.click(Button.LEFT);
       steps.push(`defocus click at (${defocus.x}, ${defocus.y})`);
@@ -240,7 +298,11 @@ async function doInjection({ x, y, text, defocus }) {
     return { ok: true, steps };
   } catch (err) {
     // On macOS the most likely cause is missing Accessibility permission.
-    return { ok: false, steps, error: String(err && err.message ? err.message : err) };
+    return {
+      ok: false,
+      steps,
+      error: String(err && err.message ? err.message : err),
+    };
   }
 }
 
@@ -248,7 +310,7 @@ async function doInjection({ x, y, text, defocus }) {
 // one (e.g. tapping a 2nd zone before a long reply finishes) never interleaves on
 // the shared keyboard/mouse/clipboard and splits a message.
 let injectionChain = Promise.resolve();
-ipcMain.handle("run-injection", (_evt, params) => {
+ipcMain.handle('run-injection', (_evt, params) => {
   const run = injectionChain.then(() => doInjection(params));
   injectionChain = run.catch(() => {});
   return run;

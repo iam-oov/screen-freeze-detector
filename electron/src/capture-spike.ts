@@ -11,14 +11,34 @@ import {
   stateKind,
   type Bbox,
   type PixelFrame,
-} from "./domain.ts";
-import { ScreenCapturer, startCapture, bboxCenterToScreen } from "./capture.ts";
-import { WebAudioSound } from "./sound.ts";
-import { TelegramNotifier, TelegramPoller, parseZoneReply } from "./telegram.ts";
-import { HOTKEYS, DEFAULTS, ALARM_REPEAT_MS, TELEGRAM_COMMANDS, TELEGRAM_GLOBAL_COMMANDS } from "../constants.js";
+} from './domain.ts';
+import { ScreenCapturer, startCapture, bboxCenterToScreen } from './capture.ts';
+import { WebAudioSound } from './sound.ts';
+import {
+  TelegramNotifier,
+  TelegramPoller,
+  parseZoneReply,
+} from './telegram.ts';
+import {
+  HOTKEYS,
+  DEFAULTS,
+  ALARM_REPEAT_MS,
+  TELEGRAM_COMMANDS,
+  TELEGRAM_GLOBAL_COMMANDS,
+} from '../constants.js';
+import {
+  DiskPreferencesStore,
+  type Prefs,
+  type PreferencesStore,
+  type ZonePrefs,
+} from './prefs.ts';
 
-const STATE_LABEL = { ok: "OK", warn: "Watching", frozen: "Frozen" } as const;
-const KIND_COLOR = { ok: "var(--ok)", warn: "var(--warn-bar)", frozen: "var(--frozen)" } as const;
+const STATE_LABEL = { ok: 'OK', warn: 'Watching', frozen: 'Frozen' } as const;
+const KIND_COLOR = {
+  ok: 'var(--ok)',
+  warn: 'var(--warn-bar)',
+  frozen: 'var(--frozen)',
+} as const;
 
 const DEFAULT_THRESHOLD = DEFAULTS.threshold;
 const DEFAULT_CONSEC = DEFAULTS.consec;
@@ -31,35 +51,41 @@ const $ = (id: string): HTMLElement => {
 };
 
 // --- static refs -----------------------------------------------------------
-const video = $("video") as HTMLVideoElement;
-const verEl = $("ver");
-const toggleBtn = $("toggleBtn") as HTMLButtonElement;
-const runBadge = $("runBadge");
-const cfg = $("cfg");
-const cfgHeader = $("cfgHeader");
-const thresholdEl = $("threshold") as HTMLInputElement;
-const thrVal = $("thrVal");
-const intervalEl = $("interval") as HTMLInputElement;
-const intVal = $("intVal");
-const consecEl = $("consec") as HTMLInputElement;
-const consecMinus = $("consecMinus") as HTMLButtonElement;
-const consecPlus = $("consecPlus") as HTMLButtonElement;
-const volumeEl = $("volume") as HTMLInputElement;
-const volVal = $("volVal");
-const tgBadge = $("tgBadge");
-const tgToken = $("tgToken") as HTMLInputElement;
-const tgChat = $("tgChat") as HTMLInputElement;
-const tgSave = $("tgSave") as HTMLButtonElement;
-const defocusBtn = $("defocusBtn") as HTMLButtonElement;
-const defocusStatus = $("defocusStatus");
-const tgEl = $("tg");
-const zCount = $("zCount");
-const selectBtn = $("selectBtn") as HTMLButtonElement;
-const selectLbl = $("selectLbl");
-const showBtn = $("showBtn") as HTMLButtonElement;
-const zonesEl = $("zones");
-const footStatus = $("footStatus");
-const lastCheck = $("lastCheck");
+const video = $('video') as HTMLVideoElement;
+const verEl = $('ver');
+const toggleBtn = $('toggleBtn') as HTMLButtonElement;
+const runBadge = $('runBadge');
+const cfg = $('cfg');
+const cfgHeader = $('cfgHeader');
+const thresholdEl = $('threshold') as HTMLInputElement;
+const thrNum = $('thrNum') as HTMLInputElement;
+const thrMinus = $('thrMinus') as HTMLButtonElement;
+const thrPlus = $('thrPlus') as HTMLButtonElement;
+const intervalEl = $('interval') as HTMLInputElement;
+const intNum = $('intNum') as HTMLInputElement;
+const intMinus = $('intMinus') as HTMLButtonElement;
+const intPlus = $('intPlus') as HTMLButtonElement;
+const consecEl = $('consec') as HTMLInputElement;
+const consecMinus = $('consecMinus') as HTMLButtonElement;
+const consecPlus = $('consecPlus') as HTMLButtonElement;
+const volumeEl = $('volume') as HTMLInputElement;
+const volNum = $('volNum') as HTMLInputElement;
+const volMinus = $('volMinus') as HTMLButtonElement;
+const volPlus = $('volPlus') as HTMLButtonElement;
+const tgBadge = $('tgBadge');
+const tgToken = $('tgToken') as HTMLInputElement;
+const tgChat = $('tgChat') as HTMLInputElement;
+const defocusBtn = $('defocusBtn') as HTMLButtonElement;
+const resetBtn = $('resetBtn') as HTMLButtonElement;
+const defocusStatus = $('defocusStatus');
+const tgEl = $('tg');
+const zCount = $('zCount');
+const selectBtn = $('selectBtn') as HTMLButtonElement;
+const selectLbl = $('selectLbl');
+const showBtn = $('showBtn') as HTMLButtonElement;
+const zonesEl = $('zones');
+const footStatus = $('footStatus');
+const lastCheck = $('lastCheck');
 
 const SVG_SOUND =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>';
@@ -83,7 +109,6 @@ interface Zone {
   config: ZoneConfig;
   state: ZoneState;
   row: HTMLElement;
-  thumb: HTMLImageElement;
   simpct: HTMLElement;
   pill: HTMLElement;
   progEl: HTMLElement;
@@ -99,7 +124,9 @@ const silentMonitorSound = { play(): void {} };
 
 let alarmTimer: ReturnType<typeof setInterval> | null = null;
 function anyAlarming(): boolean {
-  return zones.some((z) => z.config.enabled && z.config.soundEnabled && z.state.isFrozen);
+  return zones.some(
+    (z) => z.config.enabled && z.config.soundEnabled && z.state.isFrozen,
+  );
 }
 function stopAlarm(): void {
   if (alarmTimer) {
@@ -114,7 +141,10 @@ function updateAlarm(): void {
   }
   if (!alarmTimer) {
     sound.play();
-    alarmTimer = setInterval(() => (anyAlarming() ? sound.play() : stopAlarm()), ALARM_REPEAT_MS);
+    alarmTimer = setInterval(
+      () => (anyAlarming() ? sound.play() : stopAlarm()),
+      ALARM_REPEAT_MS,
+    );
   }
 }
 let capturer: ScreenCapturer | null = null;
@@ -134,8 +164,10 @@ const num = (el: HTMLInputElement, fallback: number): number => {
   return Number.isFinite(v) ? v : fallback;
 };
 const threshold = (): number => num(thresholdEl, DEFAULT_THRESHOLD);
-const consec = (): number => Math.max(1, Math.round(num(consecEl, DEFAULT_CONSEC)));
-const intervalMs = (): number => Math.max(100, Math.round(num(intervalEl, DEFAULT_INTERVAL_MS)));
+const consec = (): number =>
+  Math.max(1, Math.round(num(consecEl, DEFAULT_CONSEC)));
+const intervalMs = (): number =>
+  Math.max(100, Math.round(num(intervalEl, DEFAULT_INTERVAL_MS)));
 const volume = (): number => num(volumeEl, 1);
 
 function paintRange(el: HTMLInputElement): void {
@@ -145,61 +177,173 @@ function paintRange(el: HTMLInputElement): void {
   el.style.background = `linear-gradient(to right, var(--dark) 0 ${pct}%, var(--line) ${pct}% 100%)`;
 }
 
-function refreshDetectionLabels(): void {
-  thrVal.textContent = `${(threshold() * 100).toFixed(1)}%`;
-  const s = intervalMs() / 1000;
-  intVal.textContent = `${Number.isInteger(s) ? s : s.toFixed(1)} s`;
-  paintRange(thresholdEl);
-  paintRange(intervalEl);
+interface NumField {
+  slider: HTMLInputElement;
+  input: HTMLInputElement;
+  minus: HTMLButtonElement;
+  plus: HTMLButtonElement;
+  toDisplay: (raw: number) => number;
+  fromDisplay: (d: number) => number;
+  step: number; // in display units
+  decimals: number;
+  apply: () => void; // side effects (no save)
 }
 
-function refreshVolume(): void {
-  volVal.textContent = `${Math.round(volume() * 100)}%`;
-  paintRange(volumeEl);
-  sound.setVolume(volume());
+// Wire a slider to a typeable −input+ stepper in display units, synced both ways.
+// The slider uses step="any" so typed decimals aren't snapped. Returns a sync()
+// that reflects the slider into the input (for defaults/restore).
+function wireNumField(f: NumField): () => void {
+  const dMin = f.toDisplay(parseFloat(f.slider.min));
+  const dMax = f.toDisplay(parseFloat(f.slider.max));
+  const clampD = (d: number): number => Math.min(dMax, Math.max(dMin, d));
+  const fmt = (d: number): string => clampD(d).toFixed(f.decimals);
+  const cur = (): number => f.toDisplay(parseFloat(f.slider.value));
+  const commit = (d: number, reformat: boolean): void => {
+    f.slider.value = String(f.fromDisplay(clampD(d)));
+    paintRange(f.slider);
+    if (reformat) f.input.value = fmt(d);
+    f.apply();
+    scheduleSave();
+  };
+  f.slider.addEventListener('input', () => commit(cur(), true));
+  f.input.addEventListener('input', () => {
+    const d = parseFloat(f.input.value);
+    if (Number.isFinite(d)) commit(d, false);
+  });
+  f.input.addEventListener(
+    'change',
+    () => (f.input.value = fmt(parseFloat(f.input.value) || dMin)),
+  );
+  f.minus.addEventListener('click', () => commit(cur() - f.step, true));
+  f.plus.addEventListener('click', () => commit(cur() + f.step, true));
+  return () => {
+    f.input.value = fmt(cur());
+    paintRange(f.slider);
+    f.apply();
+  };
 }
 
-thresholdEl.addEventListener("input", refreshDetectionLabels);
-intervalEl.addEventListener("input", refreshDetectionLabels);
-volumeEl.addEventListener("input", refreshVolume);
-intervalEl.addEventListener("change", () => {
-  if (timer) {
-    clearInterval(timer);
-    timer = setInterval(tick, intervalMs());
-  }
-});
-consecMinus.addEventListener("click", () => {
+const numFieldSyncs = [
+  wireNumField({
+    slider: thresholdEl,
+    input: thrNum,
+    minus: thrMinus,
+    plus: thrPlus,
+    toDisplay: (r) => r * 100,
+    fromDisplay: (d) => d / 100,
+    step: 0.1,
+    decimals: 2,
+    apply: () => {},
+  }),
+  wireNumField({
+    slider: intervalEl,
+    input: intNum,
+    minus: intMinus,
+    plus: intPlus,
+    toDisplay: (r) => r / 1000,
+    fromDisplay: (d) => d * 1000,
+    step: 0.1,
+    decimals: 1,
+    apply: () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = setInterval(tick, intervalMs());
+      }
+    },
+  }),
+  wireNumField({
+    slider: volumeEl,
+    input: volNum,
+    minus: volMinus,
+    plus: volPlus,
+    toDisplay: (r) => r * 100,
+    fromDisplay: (d) => d / 100,
+    step: 5,
+    decimals: 0,
+    apply: () => sound.setVolume(volume()),
+  }),
+];
+function syncNumFields(): void {
+  for (const s of numFieldSyncs) s();
+}
+
+consecMinus.addEventListener('click', () => {
   consecEl.value = String(Math.max(1, consec() - 1));
+  scheduleSave();
 });
-consecPlus.addEventListener("click", () => {
+consecPlus.addEventListener('click', () => {
   consecEl.value = String(consec() + 1);
+  scheduleSave();
 });
 
-cfgHeader.addEventListener("click", () => cfg.classList.toggle("collapsed"));
+cfgHeader.addEventListener('click', () => cfg.classList.toggle('collapsed'));
 
-// --- capture + thumbnails --------------------------------------------------
+// --- preferences persistence -----------------------------------------------
+// Auto-saved (debounced) to disk via the store, restored on launch. Swap the
+// store for a remote (OAuth + Postgres) adapter later; the rest stays the same.
+const prefsStore: PreferencesStore = new DiskPreferencesStore();
+let prefsLoaded = false; // gate saving until the initial load has been applied
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSave(): void {
+  if (!prefsLoaded) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void prefsStore.save(collectPrefs()), 400);
+}
+
+function collectPrefs(): Prefs {
+  return {
+    threshold: threshold(),
+    intervalMs: intervalMs(),
+    consec: consec(),
+    volume: volume(),
+    defocusPoint,
+    zones: zones.map((z) => ({
+      name: z.config.name,
+      bbox: z.config.bbox,
+      enabled: z.config.enabled,
+      soundEnabled: z.config.soundEnabled,
+      injectEnabled: z.config.injectEnabled,
+      telegramEnabled: z.config.telegramEnabled,
+      photoBbox: z.config.photoBbox,
+    })),
+  };
+}
+
+function applyPrefs(p: Prefs): void {
+  if (typeof p.threshold === 'number') thresholdEl.value = String(p.threshold);
+  if (typeof p.intervalMs === 'number') intervalEl.value = String(p.intervalMs);
+  if (typeof p.consec === 'number') consecEl.value = String(p.consec);
+  if (typeof p.volume === 'number') volumeEl.value = String(p.volume);
+  defocusPoint = p.defocusPoint ?? null;
+  syncNumFields();
+  if (Array.isArray(p.zones)) {
+    for (const zp of p.zones) {
+      restoreZone(zp);
+      const m = /^z(\d+)$/.exec(zp.name);
+      if (m) zoneSeq = Math.max(zoneSeq, Number(m[1]));
+    }
+  }
+  updateDefocusWarning();
+  refreshEmpty();
+  refreshCounts();
+}
+
+// --- capture ---------------------------------------------------------------
 function toClamped(d: Uint8ClampedArray | number[]): Uint8ClampedArray {
   return d instanceof Uint8ClampedArray ? d : new Uint8ClampedArray(d);
 }
 
-function frameToThumb(frame: PixelFrame, sx: number, sy: number, sw: number, sh: number): string {
-  const src = document.createElement("canvas");
-  src.width = frame.width;
-  src.height = frame.height;
-  src.getContext("2d")!.putImageData(new ImageData(toClamped(frame.data), frame.width, frame.height), 0, 0);
-  const t = document.createElement("canvas");
-  t.width = 76;
-  t.height = 56;
-  t.getContext("2d")!.drawImage(src, sx, sy, sw, sh, 0, 0, t.width, t.height);
-  return t.toDataURL("image/png");
-}
-
 function frameToDataURL(frame: PixelFrame): string {
-  const c = document.createElement("canvas");
+  const c = document.createElement('canvas');
   c.width = frame.width;
   c.height = frame.height;
-  c.getContext("2d")!.putImageData(new ImageData(toClamped(frame.data), frame.width, frame.height), 0, 0);
-  return c.toDataURL("image/png");
+  c.getContext('2d')!.putImageData(
+    new ImageData(toClamped(frame.data), frame.width, frame.height),
+    0,
+    0,
+  );
+  return c.toDataURL('image/png');
 }
 
 async function ensureCapture(): Promise<ScreenCapturer> {
@@ -214,9 +358,9 @@ let emptyEl: HTMLElement | null = null;
 function refreshEmpty(): void {
   if (zones.length === 0) {
     if (!emptyEl) {
-      emptyEl = document.createElement("div");
-      emptyEl.className = "zempty";
-      emptyEl.textContent = "No zones yet — click “Select zones”.";
+      emptyEl = document.createElement('div');
+      emptyEl.className = 'zempty';
+      emptyEl.textContent = 'No zones yet — click “Select zones”.';
       zonesEl.appendChild(emptyEl);
     }
   } else if (emptyEl) {
@@ -225,21 +369,19 @@ function refreshEmpty(): void {
   }
 }
 
-function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
-  const n = ++zoneSeq;
-  const config = new ZoneConfig(bbox, `z${n}`);
+function mountZone(config: ZoneConfig): void {
   const state = new ZoneState();
-  const [x1, y1, x2, y2] = bbox;
+  const [x1, y1, x2, y2] = config.bbox;
 
-  const row = document.createElement("div");
-  row.className = "zrow";
+  const row = document.createElement('div');
+  row.className = 'zrow';
   row.innerHTML =
-    '<div class="zname"><span class="nm"></span><img class="thumb" alt="" /></div>' +
+    '<div class="zname"><span class="nm"></span></div>' +
     `<span class="zsize">${x2 - x1}×${y2 - y1}</span>` +
     '<div class="zsim"><span class="simpct">—</span></div>' +
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
     '<span class="zprog c-center">—</span>' +
-    '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" checked /><span class="slider"></span></label></span>' +
+    '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" /><span class="slider"></span></label></span>' +
     `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic tg" title="Send to Telegram on freeze">${SVG_TG}</button><button class="ic cap" title="Set Telegram capture area" style="display:none">${SVG_CAPTURE}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
 
   const q = <T extends Element>(sel: string): T => row.querySelector(sel) as T;
@@ -247,68 +389,98 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     config,
     state,
     row,
-    thumb: q<HTMLImageElement>(".thumb"),
-    simpct: q<HTMLElement>(".simpct"),
-    pill: q<HTMLElement>(".pill"),
-    progEl: q<HTMLElement>(".zprog"),
+    simpct: q<HTMLElement>('.simpct'),
+    pill: q<HTMLElement>('.pill'),
+    progEl: q<HTMLElement>('.zprog'),
   };
-  (q<HTMLElement>(".nm")).textContent = config.name;
-  if (fullFrame) zone.thumb.src = frameToThumb(fullFrame, x1, y1, x2 - x1, y2 - y1);
+  q<HTMLElement>('.nm').textContent = config.name;
 
-  const activeChk = q<HTMLInputElement>(".activeChk");
-  activeChk.addEventListener("change", () => {
+  const activeChk = q<HTMLInputElement>('.activeChk');
+  activeChk.checked = config.enabled;
+  row.style.opacity = config.enabled ? '1' : '0.5';
+  activeChk.addEventListener('change', () => {
     config.enabled = activeChk.checked;
-    row.style.opacity = config.enabled ? "1" : "0.5";
+    row.style.opacity = config.enabled ? '1' : '0.5';
     refreshCounts();
+    scheduleSave();
   });
-  const ent = q<HTMLButtonElement>(".ent");
+  const ent = q<HTMLButtonElement>('.ent');
   const paintEnter = (): void => {
-    ent.style.opacity = config.injectEnabled ? "1" : "0.4";
-    ent.style.color = config.injectEnabled ? "var(--accent)" : "";
+    ent.style.opacity = config.injectEnabled ? '1' : '0.4';
+    ent.style.color = config.injectEnabled ? 'var(--accent)' : '';
   };
   paintEnter();
-  ent.addEventListener("click", () => {
+  ent.addEventListener('click', () => {
     config.injectEnabled = !config.injectEnabled;
     paintEnter();
     if (config.injectEnabled) injectAlreadyFrozen(zone);
+    scheduleSave();
   });
-  const snd = q<HTMLButtonElement>(".snd");
+  const snd = q<HTMLButtonElement>('.snd');
   const paintSound = (): void => {
     snd.innerHTML = config.soundEnabled ? SVG_SOUND : SVG_SOUND_OFF;
-    snd.style.color = config.soundEnabled ? "var(--accent)" : "";
-    snd.style.opacity = config.soundEnabled ? "1" : "0.4";
+    snd.style.color = config.soundEnabled ? 'var(--accent)' : '';
+    snd.style.opacity = config.soundEnabled ? '1' : '0.4';
   };
   paintSound();
-  snd.addEventListener("click", () => {
+  snd.addEventListener('click', () => {
     config.soundEnabled = !config.soundEnabled;
     paintSound();
+    scheduleSave();
   });
-  const tg = q<HTMLButtonElement>(".tg");
-  const cap = q<HTMLButtonElement>(".cap");
+  const tg = q<HTMLButtonElement>('.tg');
+  const cap = q<HTMLButtonElement>('.cap');
   const paintCap = (): void => {
-    cap.style.color = config.photoBbox ? "var(--accent)" : "";
-    cap.style.opacity = config.photoBbox ? "1" : "0.6";
+    cap.style.color = config.photoBbox ? 'var(--accent)' : '';
+    cap.style.opacity = config.photoBbox ? '1' : '0.6';
   };
   const paintTg = (): void => {
-    tg.style.opacity = config.telegramEnabled ? "1" : "0.4";
-    tg.style.color = config.telegramEnabled ? "var(--accent)" : "";
-    cap.style.display = config.telegramEnabled ? "" : "none";
+    tg.style.opacity = config.telegramEnabled ? '1' : '0.4';
+    tg.style.color = config.telegramEnabled ? 'var(--accent)' : '';
+    cap.style.display = config.telegramEnabled ? '' : 'none';
   };
   paintCap();
   paintTg();
-  tg.addEventListener("click", () => {
+  tg.addEventListener('click', () => {
     config.telegramEnabled = !config.telegramEnabled;
     paintTg();
     updateDefocusWarning();
     if (config.telegramEnabled) notifyAlreadyFrozen(zone);
+    scheduleSave();
   });
-  cap.addEventListener("click", () => openCaptureZone(zone, paintCap));
-  q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
+  cap.addEventListener('click', () =>
+    openCaptureZone(zone, () => {
+      paintCap();
+      scheduleSave();
+    }),
+  );
+  q<HTMLButtonElement>('.del').addEventListener('click', () =>
+    removeZone(zone),
+  );
 
   zonesEl.appendChild(row);
   zones.push(zone);
   refreshEmpty();
   refreshCounts();
+}
+
+function addZone(bbox: Bbox): void {
+  mountZone(new ZoneConfig(bbox, `z${++zoneSeq}`));
+  scheduleSave();
+}
+
+function restoreZone(zp: ZonePrefs): void {
+  mountZone(
+    new ZoneConfig(
+      zp.bbox,
+      zp.name,
+      zp.enabled,
+      zp.soundEnabled,
+      zp.injectEnabled,
+      zp.telegramEnabled,
+      zp.photoBbox,
+    ),
+  );
 }
 
 function removeZone(zone: Zone): void {
@@ -318,26 +490,26 @@ function removeZone(zone: Zone): void {
   refreshEmpty();
   refreshCounts();
   updateDefocusWarning();
+  scheduleSave();
 }
 
-// A zone has Telegram enabled but no global defocus point is set. Typed Telegram
-// replies would then leave a blinking caret on the focused input, whose pixels
-// keep toggling, so the zone never re-freezes. Warn so it isn't forgotten.
-// (Only typed replies need it — photo send and the Enter command don't.)
 function updateDefocusWarning(): void {
-  const needsDefocus = defocusPoint === null && zones.some((z) => z.config.telegramEnabled);
-  defocusBtn.classList.toggle("warn", needsDefocus);
+  const needsDefocus =
+    defocusPoint === null && zones.some((z) => z.config.telegramEnabled);
+  defocusBtn.classList.toggle('warn', needsDefocus);
   if (defocusPoint) {
     defocusStatus.textContent = `Point at (${defocusPoint.x}, ${defocusPoint.y})`;
-    defocusStatus.classList.remove("warn");
+    defocusStatus.classList.remove('warn');
   } else {
     defocusStatus.textContent = needsDefocus
       ? "⚠ Set a defocus point — replies won't re-freeze"
-      : "No point set";
-    defocusStatus.classList.toggle("warn", needsDefocus);
+      : 'No point set';
+    defocusStatus.classList.toggle('warn', needsDefocus);
   }
   for (const z of zones) {
-    z.row.querySelector(".tg")?.classList.toggle("warn", needsDefocus && z.config.telegramEnabled);
+    z.row
+      .querySelector('.tg')
+      ?.classList.toggle('warn', needsDefocus && z.config.telegramEnabled);
   }
 }
 
@@ -353,13 +525,15 @@ function refreshCounts(): void {
     ? `Watching ${activeCount()} of ${zones.length} zones`
     : zones.length
       ? `Idle — ${zones.length} zones ready`
-      : "Idle — select zones to begin";
+      : 'Idle — select zones to begin';
 }
 
 // --- monitoring loop -------------------------------------------------------
-// Inject text (or just Enter when text is "") into a zone bbox; returns the
-// injection promise so callers can confirm once it completes.
-function injectInto(bbox: Bbox, text: string, defocus?: { x: number; y: number }): Promise<unknown> {
+function injectInto(
+  bbox: Bbox,
+  text: string,
+  defocus?: { x: number; y: number },
+): Promise<unknown> {
   if (!capturer || capturer.frameWidth === 0) return Promise.resolve();
   const { x, y } = bboxCenterToScreen(
     bbox,
@@ -373,12 +547,10 @@ function injectInto(bbox: Bbox, text: string, defocus?: { x: number; y: number }
 
 const injector = {
   inject(bbox?: Bbox): void {
-    if (bbox) void injectInto(bbox, "");
+    if (bbox) void injectInto(bbox, '');
   },
 };
 
-// Serialize Telegram sends so messages arrive in order (buttons before photos,
-// confirmations after) instead of racing as fire-and-forget.
 let tgQueue: Promise<unknown> = Promise.resolve();
 function tgEnqueue(fn: () => Promise<unknown>): void {
   tgQueue = tgQueue.then(fn).catch(() => {});
@@ -388,13 +560,6 @@ function tgNote(text: string): void {
   if (t) tgEnqueue(() => t.sendNote(text));
 }
 
-// Send the frozen-zone chooser + photo to Telegram (serialized). Shared by the
-// edge-trigger notifier and the "enabled while already frozen" catch-up. The photo
-// comes from the zone's independent capture area (photoBbox) when set, else the
-// detection bbox — grabbed fresh (the zone is frozen, so a slightly-later grab is
-// fine). Always offer the buttons (even for a single zone) so you can target the
-// right zone with one tap. Buttons first, then the screenshot — serialized so order
-// is deterministic.
 function sendFrozenTelegram(z: Zone): void {
   const tg = telegram;
   if (!tg || !capturer || capturer.frameWidth === 0) return;
@@ -416,34 +581,20 @@ function sendFrozenTelegram(z: Zone): void {
 const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
     const z = zones.find((zz) => zz.config.name === name);
-    if (z) {
-      z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
-      lastFrozenBbox = [...z.config.bbox] as Bbox;
-    }
+    if (z) lastFrozenBbox = [...z.config.bbox] as Bbox;
     if (z && z.config.telegramEnabled) sendFrozenTelegram(z);
   },
 };
 
-// Edge-trigger catch-up: enabling Telegram on a zone that is ALREADY frozen would
-// otherwise send nothing (the freeze edge already passed). Refresh the thumb and
-// fire the same chooser + photo once.
 function notifyAlreadyFrozen(z: Zone): void {
   if (!telegram || !z.config.telegramEnabled || !z.state.isFrozen) return;
-  if (!capturer || capturer.frameWidth === 0) return;
-  try {
-    const thumb = capturer.grabRegion(z.config.bbox);
-    z.thumb.src = frameToThumb(thumb, 0, 0, thumb.width, thumb.height);
-  } catch {
-    /* thumb refresh is best-effort */
-  }
   lastFrozenBbox = [...z.config.bbox] as Bbox;
   sendFrozenTelegram(z);
 }
 
-// Same edge-trigger catch-up for Enter: enabling inject on an already-frozen zone
-// would otherwise never fire (the freeze edge already passed). Press Enter once.
 function injectAlreadyFrozen(z: Zone): void {
-  if (z.config.injectEnabled && z.state.isFrozen) injector.inject(z.config.bbox);
+  if (z.config.injectEnabled && z.state.isFrozen)
+    injector.inject(z.config.bbox);
 }
 
 function paintZone(z: Zone): void {
@@ -459,8 +610,14 @@ function paintZone(z: Zone): void {
 }
 
 function tick(): void {
-  if (!monitor || !capturer || capturer.frameWidth === 0 || zones.length === 0) return;
-  monitor.checkZones(zones.map((z) => z.config), zones.map((z) => z.state), threshold(), consec());
+  if (!monitor || !capturer || capturer.frameWidth === 0 || zones.length === 0)
+    return;
+  monitor.checkZones(
+    zones.map((z) => z.config),
+    zones.map((z) => z.state),
+    threshold(),
+    consec(),
+  );
   for (const z of zones) paintZone(z);
   updateAlarm();
   lastCheck.textContent = new Date().toLocaleTimeString();
@@ -472,9 +629,9 @@ function setRunning(on: boolean): void {
   toggleBtn.innerHTML = on
     ? `${SVG_STOP}<span>Stop · ${HOTKEYS.stop}</span>`
     : `${SVG_PLAY}<span>Start · ${HOTKEYS.start}</span>`;
-  toggleBtn.classList.toggle("is-stopped", !on);
-  runBadge.className = `badge ${on ? "badge-ok" : "badge-idle"}`;
-  runBadge.innerHTML = `<span class="dot"></span> ${on ? "Running" : "Stopped"}`;
+  toggleBtn.classList.toggle('is-stopped', !on);
+  runBadge.className = `badge ${on ? 'badge-ok' : 'badge-idle'}`;
+  runBadge.innerHTML = `<span class="dot"></span> ${on ? 'Running' : 'Stopped'}`;
   refreshCounts();
 }
 
@@ -482,13 +639,21 @@ async function startMonitoring(): Promise<void> {
   if (timer || activeCount() === 0) return;
   try {
     const cap = await ensureCapture();
-    if (!monitor) monitor = new FreezeMonitor(cap, new RMSComparator(), silentMonitorSound, injector, notifier);
+    if (!monitor)
+      monitor = new FreezeMonitor(
+        cap,
+        new RMSComparator(),
+        silentMonitorSound,
+        injector,
+        notifier,
+      );
     zones.forEach((z) => z.state.reset());
     timer = setInterval(tick, intervalMs());
     setRunning(true);
   } catch (e) {
     footStatus.textContent =
-      "Capture failed (grant Screen Recording): " + (e instanceof Error ? e.message : String(e));
+      'Capture failed (grant Screen Recording): ' +
+      (e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -501,30 +666,41 @@ function stopMonitoring(): void {
   setRunning(false);
 }
 
-toggleBtn.addEventListener("click", () => (running ? stopMonitoring() : void startMonitoring()));
+toggleBtn.addEventListener('click', () =>
+  running ? stopMonitoring() : void startMonitoring(),
+);
 window.spike.onHotkey((which: string) => {
-  if (which === "start") void startMonitoring();
-  else if (which === "stop") stopMonitoring();
-  else if (which === "select") selectZones();
+  if (which === 'start') void startMonitoring();
+  else if (which === 'stop') stopMonitoring();
+  else if (which === 'select') selectZones();
 });
 
 // --- overlay-driven zone selection ----------------------------------------
 let overlayBusy = false; // guards against stacking overlays (e.g. F8 spam)
 
-async function withScreenshot<T>(use: (shot: { dataURL: string; frameW: number; frameH: number; frame: PixelFrame }) => Promise<T>): Promise<T | null> {
+async function withScreenshot<T>(
+  use: (shot: {
+    dataURL: string;
+    frameW: number;
+    frameH: number;
+  }) => Promise<T>,
+): Promise<T | null> {
   if (overlayBusy) return null;
   overlayBusy = true;
   try {
     const cap = await ensureCapture();
-    // Hide our window FIRST, then let the live capture catch up, so the
-    // screenshot shows the desktop behind us — not the screensound window.
     await window.spike.setWindowVisible(false);
     await new Promise((r) => setTimeout(r, 200));
     const frame = cap.grabRegion([0, 0, cap.frameWidth, cap.frameHeight]);
-    const shot = { dataURL: frameToDataURL(frame), frameW: cap.frameWidth, frameH: cap.frameHeight, frame };
+    const shot = {
+      dataURL: frameToDataURL(frame),
+      frameW: cap.frameWidth,
+      frameH: cap.frameHeight,
+    };
     return await use(shot);
   } catch (e) {
-    footStatus.textContent = "Capture failed: " + (e instanceof Error ? e.message : String(e));
+    footStatus.textContent =
+      'Capture failed: ' + (e instanceof Error ? e.message : String(e));
     return null;
   } finally {
     await window.spike.setWindowVisible(true);
@@ -536,43 +712,39 @@ function bboxEq(a: Bbox, b: Bbox): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
-// Apply a resized detection bbox to an existing zone: re-baseline the freeze state
-// (the old prevImage is for the old region) and refresh the size label + thumbnail.
-function updateZoneBbox(z: Zone, bbox: Bbox, fullFrame: PixelFrame): void {
+function updateZoneBbox(z: Zone, bbox: Bbox): void {
   z.config.bbox = bbox;
   z.state.reset();
   const [x1, y1, x2, y2] = bbox;
-  const size = z.row.querySelector(".zsize");
+  const size = z.row.querySelector('.zsize');
   if (size) size.textContent = `${x2 - x1}×${y2 - y1}`;
-  z.thumb.src = frameToThumb(fullFrame, x1, y1, x2 - x1, y2 - y1);
+  scheduleSave();
 }
 
 function selectZones(): void {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
-      mode: "select",
+      mode: 'select',
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
-      // Existing zones load editable; the overlay returns them (possibly resized) as
-      // `existing` aligned by index, plus any newly drawn `added` ones.
       zones: zones.map((z) => z.config.bbox),
     });
     if (!res) return;
     if (Array.isArray(res.existing)) {
       res.existing.forEach((b: Bbox, i: number) => {
         const z = zones[i];
-        if (z && !bboxEq(z.config.bbox, b)) updateZoneBbox(z, b, shot.frame);
+        if (z && !bboxEq(z.config.bbox, b)) updateZoneBbox(z, b);
       });
     }
-    if (Array.isArray(res.added)) for (const b of res.added) addZone(b, shot.frame);
+    if (Array.isArray(res.added)) for (const b of res.added) addZone(b);
   });
 }
 
 function openCaptureZone(z: Zone, onSet: () => void): void {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
-      mode: "capture",
+      mode: 'capture',
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
@@ -586,12 +758,12 @@ function openCaptureZone(z: Zone, onSet: () => void): void {
   });
 }
 
-selectBtn.addEventListener("click", selectZones);
+selectBtn.addEventListener('click', selectZones);
 
-showBtn.addEventListener("click", () => {
+showBtn.addEventListener('click', () => {
   void withScreenshot(async (shot) => {
     await window.spike.openOverlay({
-      mode: "show",
+      mode: 'show',
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
@@ -601,10 +773,10 @@ showBtn.addEventListener("click", () => {
   });
 });
 
-defocusBtn.addEventListener("click", () => {
+defocusBtn.addEventListener('click', () => {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
-      mode: "defocus",
+      mode: 'defocus',
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
@@ -612,51 +784,59 @@ defocusBtn.addEventListener("click", () => {
     if (res && res.point) {
       defocusPoint = res.point;
       updateDefocusWarning();
+      scheduleSave();
     }
   });
 });
 
 // --- Telegram --------------------------------------------------------------
 function setTgBadge(connected: boolean): void {
-  tgBadge.className = `badge ${connected ? "badge-ok" : "badge-idle"}`;
-  tgBadge.innerHTML = `<span class="dot"></span> ${connected ? "Connected" : "Not set"}`;
+  tgBadge.className = `badge ${connected ? 'badge-ok' : 'badge-idle'}`;
+  tgBadge.innerHTML = `<span class="dot"></span> ${connected ? 'Connected' : 'Not set'}`;
 }
 
 function zoneByName(name: string | null): Zone | null {
   return name ? (zones.find((z) => z.config.name === name) ?? null) : null;
 }
 
-// Reply to the chat with one line per zone: name + current state. Global (no
-// target zone needed), serialized through the same queue as the other sends.
 function sendStatus(): void {
   const t = telegram;
   if (!t) return;
-  const body = zones.length
+  const header = running ? 'Monitoring' : 'Paused';
+  const zoneLines = zones.length
     ? zones
-        .map((z) => `${z.config.name}  ${z.config.enabled ? STATE_LABEL[stateKind(z.state, threshold())] : "OFF"}`)
-        .join("\n")
-    : "No zones";
-  tgEnqueue(() => t.sendText(body));
+        .map(
+          (z) =>
+            `${z.config.name}  ${z.config.enabled ? STATE_LABEL[stateKind(z.state, threshold())] : 'OFF'}`,
+        )
+        .join('\n')
+    : 'No zones';
+  tgEnqueue(() => t.sendText(`${header}\n${zoneLines}`));
 }
 
-// A chat reply: a global command ("/status") replies with the summary; otherwise
-// resolve the target zone (explicit "z2:" prefix -> last tapped -> last frozen),
-// then run a command word ("enter") or type the message.
 async function handleReply(text: string): Promise<void> {
-  if (TELEGRAM_GLOBAL_COMMANDS[text.trim().toLowerCase()] === "status") {
-    sendStatus();
+  const globalCmd = TELEGRAM_GLOBAL_COMMANDS[text.trim().toLowerCase()];
+  if (globalCmd) {
+    if (globalCmd === 'start') await startMonitoring();
+    else if (globalCmd === 'stop') stopMonitoring();
+    sendStatus(); // reply with the (possibly updated) state
     return;
   }
-  const { zone, message } = parseZoneReply(text, zones.map((z) => z.config.name));
+  const { zone, message } = parseZoneReply(
+    text,
+    zones.map((z) => z.config.name),
+  );
   const target =
-    zoneByName(zone)?.config.bbox ?? zoneByName(selectedZoneName)?.config.bbox ?? lastFrozenBbox;
+    zoneByName(zone)?.config.bbox ??
+    zoneByName(selectedZoneName)?.config.bbox ??
+    lastFrozenBbox;
   if (!target || !capturer || capturer.frameWidth === 0) {
-    tgEl.textContent = "Reply ignored: no frozen zone yet";
+    tgEl.textContent = 'Reply ignored: no frozen zone yet';
     return;
   }
-  const tag = zone ? ` → ${zone}` : "";
-  if (TELEGRAM_COMMANDS[message.trim().toLowerCase()] === "enter") {
-    await injectInto(target, "");
+  const tag = zone ? ` → ${zone}` : '';
+  if (TELEGRAM_COMMANDS[message.trim().toLowerCase()] === 'enter') {
+    await injectInto(target, '');
     tgEl.textContent = `Enter${tag}`;
     tgNote(`✓ Enter${tag}`);
   } else {
@@ -666,20 +846,22 @@ async function handleReply(text: string): Promise<void> {
   }
 }
 
-// An inline-button tap: press Enter on that zone now AND pre-select it for the
-// next typed reply. Returns the toast shown on the button.
 function onZoneCallback(code: string): string {
   const z = zoneByName(code);
-  if (!z || !capturer || capturer.frameWidth === 0) return "Unknown zone";
+  if (!z || !capturer || capturer.frameWidth === 0) return 'Unknown zone';
   selectedZoneName = code;
-  void injectInto(z.config.bbox, "").then(() => tgNote(`✓ Enter → ${code}`));
+  void injectInto(z.config.bbox, '').then(() => tgNote(`✓ Enter → ${code}`));
   return `Enter → ${code} · reply to type`;
 }
 
 function applyCreds(token: string, chatId: string): void {
   if (poller) poller.stop();
   if (token && chatId) {
-    telegram = new TelegramNotifier(token, chatId, (s: string) => (tgEl.textContent = s));
+    telegram = new TelegramNotifier(
+      token,
+      chatId,
+      (s: string) => (tgEl.textContent = s),
+    );
     poller = new TelegramPoller(token, chatId, handleReply, onZoneCallback);
     poller.start(); // remote control is on whenever creds are set
     setTgBadge(true);
@@ -690,40 +872,64 @@ function applyCreds(token: string, chatId: string): void {
   }
 }
 
-tgSave.addEventListener("click", () => {
-  const token = tgToken.value.trim();
-  const chatId = tgChat.value.trim();
-  if (!token || !chatId) {
-    tgEl.textContent = "Both bot token and chat ID are required.";
+let credsTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleCredsSave(): void {
+  if (credsTimer) clearTimeout(credsTimer);
+  credsTimer = setTimeout(() => {
+    const token = tgToken.value.trim();
+    const chatId = tgChat.value.trim();
+    void window.spike.saveTelegramConfig({ token, chatId });
+    applyCreds(token, chatId);
+  }, 400);
+}
+[tgToken, tgChat].forEach((el) =>
+  el.addEventListener('input', scheduleCredsSave),
+);
+
+resetBtn.addEventListener('click', () => {
+  if (
+    !window.confirm(
+      'Reset all settings to defaults? This removes all watched zones.',
+    )
+  )
     return;
-  }
-  void window.spike
-    .saveTelegramConfig({ token, chatId })
-    .then((r: { ok: boolean; path?: string; error?: string }) => {
-      if (r.ok) {
-        applyCreds(token, chatId);
-        tgEl.textContent = `Saved to ${r.path}`;
-      } else {
-        tgEl.textContent = `Save failed: ${r.error}`;
-      }
-    });
+  stopMonitoring();
+  for (const z of zones) z.row.remove();
+  zones.length = 0;
+  zoneSeq = 0;
+  thresholdEl.value = String(DEFAULT_THRESHOLD);
+  intervalEl.value = String(DEFAULT_INTERVAL_MS);
+  consecEl.value = String(DEFAULT_CONSEC);
+  volumeEl.value = '1';
+  defocusPoint = null;
+  syncNumFields();
+  updateDefocusWarning();
+  refreshEmpty();
+  refreshCounts();
+  scheduleSave();
 });
 
 // --- init ------------------------------------------------------------------
 window.spike.getVersion().then((v: string) => (verEl.textContent = v));
-window.spike.getTelegramConfig().then(({ token, chatId }: { token: string; chatId: string }) => {
-  tgToken.value = token;
-  tgChat.value = chatId;
-  applyCreds(token, chatId);
-});
+window.spike
+  .getTelegramConfig()
+  .then(({ token, chatId }: { token: string; chatId: string }) => {
+    tgToken.value = token;
+    tgChat.value = chatId;
+    applyCreds(token, chatId);
+  });
 selectLbl.textContent = `Select zones · ${HOTKEYS.select}`;
-// constants.js DEFAULTS drive the initial control values (the HTML attributes
-// are just pre-JS placeholders).
 thresholdEl.value = String(DEFAULT_THRESHOLD);
 intervalEl.value = String(DEFAULT_INTERVAL_MS);
 consecEl.value = String(DEFAULT_CONSEC);
-refreshDetectionLabels();
-refreshVolume();
+syncNumFields();
 refreshEmpty();
 setRunning(false);
-window.addEventListener("error", (e) => (footStatus.textContent = "JS error: " + e.message));
+void prefsStore.load().then((saved) => {
+  if (saved) applyPrefs(saved);
+  prefsLoaded = true; // only now do user changes start persisting
+});
+window.addEventListener(
+  'error',
+  (e) => (footStatus.textContent = 'JS error: ' + e.message),
+);
