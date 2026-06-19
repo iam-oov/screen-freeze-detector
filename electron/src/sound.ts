@@ -3,12 +3,12 @@
 // aplay). Same alert: two 880Hz beeps. The renderer's alarm timer calls play()
 // at a fixed cadence (ALARM_REPEAT_MS) while a zone stays frozen.
 import type { SoundPlayer } from "./domain.ts";
+import { ALARM_PEAK_GAIN } from "../constants.js";
 
 const FREQ = 880;
 const DURATION = 0.15; // seconds per beep
 const BEEPS = 2;
 const GAP = 0.1; // seconds between beeps
-const PEAK = 0.2; // keep it gentle
 
 export class WebAudioSound implements SoundPlayer {
   private ctx: AudioContext;
@@ -39,7 +39,7 @@ export class WebAudioSound implements SoundPlayer {
     const gain = this.ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = FREQ;
-    const peak = PEAK * this.volume;
+    const peak = ALARM_PEAK_GAIN * this.volume;
     // Short attack/release envelope so the beeps don't click.
     gain.gain.setValueAtTime(0, start);
     gain.gain.linearRampToValueAtTime(peak, start + 0.01);

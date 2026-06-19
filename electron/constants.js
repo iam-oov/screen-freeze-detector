@@ -5,7 +5,9 @@ module.exports = {
   DEFAULTS: { threshold: 0.997, intervalMs: 5000, consec: 4 },
   // Freeze alarm: how often the beep repeats while a zone stays frozen (ms).
   // Decoupled from the capture interval so the alarm can be as urgent as wanted.
-  ALARM_REPEAT_MS: 800,
+  ALARM_REPEAT_MS: 2000,
+  // Alarm beep gain at 100% volume (0..1); the volume slider scales this down.
+  ALARM_PEAK_GAIN: 0.9,
   // Telegram text commands: a reply equal to one of these words (trimmed,
   // case-insensitive) runs the action instead of being typed. Add more here.
   TELEGRAM_COMMANDS: { enter: 'enter' }, // "enter" -> simulate the Enter key only

@@ -84,7 +84,6 @@ interface Zone {
   state: ZoneState;
   row: HTMLElement;
   thumb: HTMLImageElement;
-  dot: HTMLElement;
   simpct: HTMLElement;
   pill: HTMLElement;
   progEl: HTMLElement;
@@ -235,7 +234,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
   const row = document.createElement("div");
   row.className = "zrow";
   row.innerHTML =
-    '<div class="zname"><img class="thumb" alt="" /><span class="zdot"></span><span class="nm"></span></div>' +
+    '<div class="zname"><span class="nm"></span><img class="thumb" alt="" /></div>' +
     `<span class="zsize">${x2 - x1}×${y2 - y1}</span>` +
     '<div class="zsim"><span class="simpct">—</span></div>' +
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
@@ -249,13 +248,11 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     state,
     row,
     thumb: q<HTMLImageElement>(".thumb"),
-    dot: q<HTMLElement>(".zdot"),
     simpct: q<HTMLElement>(".simpct"),
     pill: q<HTMLElement>(".pill"),
     progEl: q<HTMLElement>(".zprog"),
   };
   (q<HTMLElement>(".nm")).textContent = config.name;
-  zone.dot.style.background = "var(--ok)";
   if (fullFrame) zone.thumb.src = frameToThumb(fullFrame, x1, y1, x2 - x1, y2 - y1);
 
   const activeChk = q<HTMLInputElement>(".activeChk");
@@ -351,6 +348,7 @@ function activeCount(): number {
 function refreshCounts(): void {
   zCount.textContent = `${activeCount()} active`;
   showBtn.disabled = zones.length <= 1;
+  toggleBtn.disabled = !running && activeCount() === 0;
   footStatus.textContent = running
     ? `Watching ${activeCount()} of ${zones.length} zones`
     : zones.length
@@ -458,7 +456,6 @@ function paintZone(z: Zone): void {
   z.pill.className = `pill pill-${kind}`;
   const need = consec();
   z.progEl.textContent = `${Math.min(s.frozenCount, need)}/${need}`;
-  z.dot.style.background = KIND_COLOR[kind];
 }
 
 function tick(): void {
@@ -482,7 +479,7 @@ function setRunning(on: boolean): void {
 }
 
 async function startMonitoring(): Promise<void> {
-  if (timer) return;
+  if (timer || activeCount() === 0) return;
   try {
     const cap = await ensureCapture();
     if (!monitor) monitor = new FreezeMonitor(cap, new RMSComparator(), silentMonitorSound, injector, notifier);
