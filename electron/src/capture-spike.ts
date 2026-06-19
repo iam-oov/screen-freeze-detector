@@ -71,6 +71,10 @@ const SVG_TG =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
 const SVG_CAPTURE =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+const SVG_PLAY =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const SVG_STOP =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>';
 
 // --- state -----------------------------------------------------------------
 interface Zone {
@@ -440,7 +444,9 @@ function tick(): void {
 
 function setRunning(on: boolean): void {
   running = on;
-  toggleBtn.textContent = on ? `● Stop · ${HOTKEYS.stop}` : `Start · ${HOTKEYS.start}`;
+  toggleBtn.innerHTML = on
+    ? `${SVG_STOP}<span>Stop · ${HOTKEYS.stop}</span>`
+    : `${SVG_PLAY}<span>Start · ${HOTKEYS.start}</span>`;
   toggleBtn.classList.toggle("is-stopped", !on);
   runBadge.className = `badge ${on ? "badge-ok" : "badge-idle"}`;
   runBadge.innerHTML = `<span class="dot"></span> ${on ? "Running" : "Stopped"}`;
