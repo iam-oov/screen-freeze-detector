@@ -285,7 +285,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Show mode: any click dismisses.
 document.addEventListener("click", () => {
   if (mode === "show") window.spike.overlayDone(null);
 });

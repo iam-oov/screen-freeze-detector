@@ -15,7 +15,7 @@ import {
 import { ScreenCapturer, startCapture, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
 import { TelegramNotifier, TelegramPoller, parseZoneReply } from "./telegram.ts";
-import { HOTKEYS, DEFAULTS, TELEGRAM_COMMANDS, TELEGRAM_GLOBAL_COMMANDS } from "../constants.js";
+import { HOTKEYS, DEFAULTS, ALARM_REPEAT_MS, TELEGRAM_COMMANDS, TELEGRAM_GLOBAL_COMMANDS } from "../constants.js";
 
 const STATE_LABEL = { ok: "OK", warn: "Watching", frozen: "Frozen" } as const;
 const KIND_COLOR = { ok: "var(--ok)", warn: "var(--warn-bar)", frozen: "var(--frozen)" } as const;
@@ -44,6 +44,8 @@ const intVal = $("intVal");
 const consecEl = $("consec") as HTMLInputElement;
 const consecMinus = $("consecMinus") as HTMLButtonElement;
 const consecPlus = $("consecPlus") as HTMLButtonElement;
+const volumeEl = $("volume") as HTMLInputElement;
+const volVal = $("volVal");
 const tgBadge = $("tgBadge");
 const tgToken = $("tgToken") as HTMLInputElement;
 const tgChat = $("tgChat") as HTMLInputElement;
@@ -90,7 +92,32 @@ interface Zone {
 const zones: Zone[] = [];
 let zoneSeq = 0;
 
-const sound = new WebAudioSound(DEFAULT_INTERVAL_MS);
+// The alarm cadence is driven by a renderer timer (updateAlarm), not the capture
+// loop, so the beep can repeat faster than captures happen. The monitor is given
+// a no-op sound to avoid a second beep at the capture rate.
+const sound = new WebAudioSound();
+const silentMonitorSound = { play(): void {} };
+
+let alarmTimer: ReturnType<typeof setInterval> | null = null;
+function anyAlarming(): boolean {
+  return zones.some((z) => z.config.enabled && z.config.soundEnabled && z.state.isFrozen);
+}
+function stopAlarm(): void {
+  if (alarmTimer) {
+    clearInterval(alarmTimer);
+    alarmTimer = null;
+  }
+}
+function updateAlarm(): void {
+  if (!anyAlarming()) {
+    stopAlarm();
+    return;
+  }
+  if (!alarmTimer) {
+    sound.play();
+    alarmTimer = setInterval(() => (anyAlarming() ? sound.play() : stopAlarm()), ALARM_REPEAT_MS);
+  }
+}
 let capturer: ScreenCapturer | null = null;
 let monitor: FreezeMonitor | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -110,6 +137,7 @@ const num = (el: HTMLInputElement, fallback: number): number => {
 const threshold = (): number => num(thresholdEl, DEFAULT_THRESHOLD);
 const consec = (): number => Math.max(1, Math.round(num(consecEl, DEFAULT_CONSEC)));
 const intervalMs = (): number => Math.max(100, Math.round(num(intervalEl, DEFAULT_INTERVAL_MS)));
+const volume = (): number => num(volumeEl, 1);
 
 function paintRange(el: HTMLInputElement): void {
   const min = parseFloat(el.min);
@@ -126,10 +154,16 @@ function refreshDetectionLabels(): void {
   paintRange(intervalEl);
 }
 
+function refreshVolume(): void {
+  volVal.textContent = `${Math.round(volume() * 100)}%`;
+  paintRange(volumeEl);
+  sound.setVolume(volume());
+}
+
 thresholdEl.addEventListener("input", refreshDetectionLabels);
 intervalEl.addEventListener("input", refreshDetectionLabels);
+volumeEl.addEventListener("input", refreshVolume);
 intervalEl.addEventListener("change", () => {
-  sound.setCooldown(intervalMs());
   if (timer) {
     clearInterval(timer);
     timer = setInterval(tick, intervalMs());
@@ -149,7 +183,6 @@ function toClamped(d: Uint8ClampedArray | number[]): Uint8ClampedArray {
   return d instanceof Uint8ClampedArray ? d : new Uint8ClampedArray(d);
 }
 
-// Draw a region of a frame into a small thumbnail dataURL.
 function frameToThumb(frame: PixelFrame, sx: number, sy: number, sw: number, sh: number): string {
   const src = document.createElement("canvas");
   src.width = frame.width;
@@ -172,7 +205,6 @@ function frameToDataURL(frame: PixelFrame): string {
 
 async function ensureCapture(): Promise<ScreenCapturer> {
   if (!capturer) capturer = await startCapture(video);
-  // wait one frame if dimensions aren't ready yet
   if (capturer.frameWidth === 0) await new Promise((r) => setTimeout(r, 200));
   return capturer;
 }
@@ -232,7 +264,6 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     row.style.opacity = config.enabled ? "1" : "0.5";
     refreshCounts();
   });
-  // Per-zone "Press Enter on freeze" — opt-in, off by default.
   const ent = q<HTMLButtonElement>(".ent");
   const paintEnter = (): void => {
     ent.style.opacity = config.injectEnabled ? "1" : "0.4";
@@ -250,13 +281,11 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     snd.style.color = config.soundEnabled ? "var(--accent)" : "";
     snd.style.opacity = config.soundEnabled ? "1" : "0.4";
   };
-  paintSound(); // soundEnabled defaults true -> pink/active
+  paintSound();
   snd.addEventListener("click", () => {
     config.soundEnabled = !config.soundEnabled;
     paintSound();
   });
-  // Per-zone Telegram — opt-in, off by default (like Enter). The capture-area
-  // button (cap) only shows while Telegram is on.
   const tg = q<HTMLButtonElement>(".tg");
   const cap = q<HTMLButtonElement>(".cap");
   const paintCap = (): void => {
@@ -321,7 +350,7 @@ function activeCount(): number {
 
 function refreshCounts(): void {
   zCount.textContent = `${activeCount()} active`;
-  showBtn.disabled = zones.length <= 1; // only useful with more than one zone
+  showBtn.disabled = zones.length <= 1;
   footStatus.textContent = running
     ? `Watching ${activeCount()} of ${zones.length} zones`
     : zones.length
@@ -344,7 +373,6 @@ function injectInto(bbox: Bbox, text: string, defocus?: { x: number; y: number }
   return window.spike.runInjection({ x, y, text, defocus });
 }
 
-// Gating is per-zone in the domain (zone.injectEnabled); here we just press Enter.
 const injector = {
   inject(bbox?: Bbox): void {
     if (bbox) void injectInto(bbox, "");
@@ -428,7 +456,6 @@ function paintZone(z: Zone): void {
   z.simpct.style.color = KIND_COLOR[kind];
   z.pill.textContent = STATE_LABEL[kind];
   z.pill.className = `pill pill-${kind}`;
-  // Consecutive near-identical captures so far, toward the freeze threshold.
   const need = consec();
   z.progEl.textContent = `${Math.min(s.frozenCount, need)}/${need}`;
   z.dot.style.background = KIND_COLOR[kind];
@@ -438,6 +465,7 @@ function tick(): void {
   if (!monitor || !capturer || capturer.frameWidth === 0 || zones.length === 0) return;
   monitor.checkZones(zones.map((z) => z.config), zones.map((z) => z.state), threshold(), consec());
   for (const z of zones) paintZone(z);
+  updateAlarm();
   lastCheck.textContent = new Date().toLocaleTimeString();
   refreshCounts();
 }
@@ -457,9 +485,8 @@ async function startMonitoring(): Promise<void> {
   if (timer) return;
   try {
     const cap = await ensureCapture();
-    if (!monitor) monitor = new FreezeMonitor(cap, new RMSComparator(), sound, injector, notifier);
+    if (!monitor) monitor = new FreezeMonitor(cap, new RMSComparator(), silentMonitorSound, injector, notifier);
     zones.forEach((z) => z.state.reset());
-    sound.setCooldown(intervalMs());
     timer = setInterval(tick, intervalMs());
     setRunning(true);
   } catch (e) {
@@ -473,6 +500,7 @@ function stopMonitoring(): void {
     clearInterval(timer);
     timer = null;
   }
+  stopAlarm();
   setRunning(false);
 }
 
@@ -544,8 +572,6 @@ function selectZones(): void {
   });
 }
 
-// Open the capture-area overlay for a zone: draw/adjust the independent Telegram
-// photo region (the detection zone is shown only as a reference).
 function openCaptureZone(z: Zone, onSet: () => void): void {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
@@ -632,7 +658,7 @@ async function handleReply(text: string): Promise<void> {
   }
   const tag = zone ? ` → ${zone}` : "";
   if (TELEGRAM_COMMANDS[message.trim().toLowerCase()] === "enter") {
-    await injectInto(target, ""); // Enter only, no text/defocus
+    await injectInto(target, "");
     tgEl.textContent = `Enter${tag}`;
     tgNote(`✓ Enter${tag}`);
   } else {
@@ -699,6 +725,7 @@ thresholdEl.value = String(DEFAULT_THRESHOLD);
 intervalEl.value = String(DEFAULT_INTERVAL_MS);
 consecEl.value = String(DEFAULT_CONSEC);
 refreshDetectionLabels();
+refreshVolume();
 refreshEmpty();
 setRunning(false);
 window.addEventListener("error", (e) => (footStatus.textContent = "JS error: " + e.message));
