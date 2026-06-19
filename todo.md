@@ -1,9 +1,5 @@
-1. la screenshot enviada por telegram tiene que ser mas grande que la zona congelada, debe hacer 2 pre-zonas para una misma zona. La zona de donde se enviara la screenshot y la zona congelada.
-2. agregar sesion para mantener preferencias del usuario
-
-- thresholds
-- zonas
-- credenciales de telegram
-- etc
-
 3. eliminar la parte de python (codigo)
+4. agregar un comando en telegram para que regrese las zonas en botones
+5. agregar un comando en telegram para que permita regresar la zona detectada en su estado actual: "/ss <codigo_zona>"
+6. agregar un comando en telegram para activar el defocus: /defocus
+7. (opcional-investigar) actualmente se reciben notificaciones separadas en telegram, se puede enviar todo en un solo mensaje?

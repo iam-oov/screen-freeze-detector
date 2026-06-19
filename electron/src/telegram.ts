@@ -1,7 +1,5 @@
-// Telegram adapters, ported from freeze_detector.py. The Python used stdlib
-// urllib + a hand-rolled multipart encoder and threads; here fetch + FormData
-// are built in. Runs in the renderer (it can fetch api.telegram.org directly
-// and already has canvas to encode PNGs).
+// Telegram adapters. fetch + FormData talk to the Bot API directly from the
+// renderer (which can fetch api.telegram.org and has canvas to encode PNGs).
 import type { PixelFrame, RemoteNotifier } from "./domain.ts";
 
 const API = "https://api.telegram.org";

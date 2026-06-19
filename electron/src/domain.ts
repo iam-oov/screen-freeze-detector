@@ -1,7 +1,5 @@
-// Pure domain logic, ported 1:1 from freeze_detector.py (Python).
-// No OS, no Electron, no I/O — just the freeze state machine, the RMS image
-// comparison, and the edge-trigger orchestration. This is the part that ports
-// cleanly precisely because the Python app kept it isolated behind Protocols.
+// Pure domain logic: no OS, no Electron, no I/O — just the freeze state machine,
+// the RMS image comparison, and the edge-trigger orchestration.
 
 export type Bbox = [number, number, number, number];
 
