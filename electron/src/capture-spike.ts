@@ -69,19 +69,19 @@ const SVG_ENTER =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 10 4 15l5 5"/><path d="M4 15h11a5 5 0 0 0 5-5V4"/></svg>';
 const SVG_TG =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+const SVG_CAPTURE =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
 
 // --- state -----------------------------------------------------------------
 interface Zone {
   config: ZoneConfig;
   state: ZoneState;
-  frozenEdges: number;
   row: HTMLElement;
   thumb: HTMLImageElement;
   dot: HTMLElement;
   simpct: HTMLElement;
   pill: HTMLElement;
   progEl: HTMLElement;
-  frozenEl: HTMLElement;
 }
 const zones: Zone[] = [];
 let zoneSeq = 0;
@@ -204,22 +204,19 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     '<div class="zsim"><span class="simpct">—</span></div>' +
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
     '<span class="zprog c-center">—</span>' +
-    '<span class="zfrozen c-center">0</span>' +
     '<span class="zactive"><label class="switch sm"><input type="checkbox" class="activeChk" checked /><span class="slider"></span></label></span>' +
-    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic tg" title="Send to Telegram on freeze">${SVG_TG}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
+    `<span class="zactions"><button class="ic snd" title="Sound">${SVG_SOUND}</button><button class="ic ent" title="Press Enter on freeze">${SVG_ENTER}</button><button class="ic tg" title="Send to Telegram on freeze">${SVG_TG}</button><button class="ic cap" title="Set Telegram capture area" style="display:none">${SVG_CAPTURE}</button><button class="ic del" title="Remove">${SVG_TRASH}</button></span>`;
 
   const q = <T extends Element>(sel: string): T => row.querySelector(sel) as T;
   const zone: Zone = {
     config,
     state,
-    frozenEdges: 0,
     row,
     thumb: q<HTMLImageElement>(".thumb"),
     dot: q<HTMLElement>(".zdot"),
     simpct: q<HTMLElement>(".simpct"),
     pill: q<HTMLElement>(".pill"),
     progEl: q<HTMLElement>(".zprog"),
-    frozenEl: q<HTMLElement>(".zfrozen"),
   };
   (q<HTMLElement>(".nm")).textContent = config.name;
   zone.dot.style.background = "var(--ok)";
@@ -254,12 +251,20 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     config.soundEnabled = !config.soundEnabled;
     paintSound();
   });
-  // Per-zone Telegram — opt-in, off by default (like Enter).
+  // Per-zone Telegram — opt-in, off by default (like Enter). The capture-area
+  // button (cap) only shows while Telegram is on.
   const tg = q<HTMLButtonElement>(".tg");
+  const cap = q<HTMLButtonElement>(".cap");
+  const paintCap = (): void => {
+    cap.style.color = config.photoBbox ? "var(--accent)" : "";
+    cap.style.opacity = config.photoBbox ? "1" : "0.6";
+  };
   const paintTg = (): void => {
     tg.style.opacity = config.telegramEnabled ? "1" : "0.4";
     tg.style.color = config.telegramEnabled ? "var(--accent)" : "";
+    cap.style.display = config.telegramEnabled ? "" : "none";
   };
+  paintCap();
   paintTg();
   tg.addEventListener("click", () => {
     config.telegramEnabled = !config.telegramEnabled;
@@ -267,6 +272,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     updateDefocusWarning();
     if (config.telegramEnabled) notifyAlreadyFrozen(zone);
   });
+  cap.addEventListener("click", () => openCaptureZone(zone, paintCap));
   q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
 
   zonesEl.appendChild(row);
@@ -353,19 +359,27 @@ function tgNote(text: string): void {
 }
 
 // Send the frozen-zone chooser + photo to Telegram (serialized). Shared by the
-// edge-trigger notifier and the "enabled while already frozen" catch-up.
-// Always offer the buttons (even for a single zone) so you can target the right
-// zone with one tap, regardless of where your focus is. Buttons first, then the
-// screenshot — serialized so order is deterministic.
-function sendFrozenTelegram(frame: PixelFrame, name: string): void {
+// edge-trigger notifier and the "enabled while already frozen" catch-up. The photo
+// comes from the zone's independent capture area (photoBbox) when set, else the
+// detection bbox — grabbed fresh (the zone is frozen, so a slightly-later grab is
+// fine). Always offer the buttons (even for a single zone) so you can target the
+// right zone with one tap. Buttons first, then the screenshot — serialized so order
+// is deterministic.
+function sendFrozenTelegram(z: Zone): void {
   const tg = telegram;
-  if (!tg) return;
+  if (!tg || !capturer || capturer.frameWidth === 0) return;
   const frozen = zones
     .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
     .map((zz) => zz.config.name);
+  let frame: PixelFrame;
+  try {
+    frame = capturer.grabRegion(z.config.photoBbox ?? z.config.bbox);
+  } catch {
+    return;
+  }
   tgEnqueue(async () => {
     await tg.sendChooser(frozen);
-    await tg.notifyFrozen(frame, name);
+    await tg.notifyFrozen(frame, z.config.name);
   });
 }
 
@@ -373,30 +387,27 @@ const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
     const z = zones.find((zz) => zz.config.name === name);
     if (z) {
-      z.frozenEdges += 1;
-      z.frozenEl.textContent = String(z.frozenEdges);
       z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
       lastFrozenBbox = [...z.config.bbox] as Bbox;
     }
-    if (z && z.config.telegramEnabled) sendFrozenTelegram(frame, name);
+    if (z && z.config.telegramEnabled) sendFrozenTelegram(z);
   },
 };
 
 // Edge-trigger catch-up: enabling Telegram on a zone that is ALREADY frozen would
-// otherwise send nothing (the freeze edge already passed). Grab a fresh frame and
-// fire the same chooser + photo once. No frozenEdges bump — it's not a new freeze.
+// otherwise send nothing (the freeze edge already passed). Refresh the thumb and
+// fire the same chooser + photo once.
 function notifyAlreadyFrozen(z: Zone): void {
   if (!telegram || !z.config.telegramEnabled || !z.state.isFrozen) return;
   if (!capturer || capturer.frameWidth === 0) return;
-  let frame: PixelFrame;
   try {
-    frame = capturer.grabRegion(z.config.bbox);
+    const thumb = capturer.grabRegion(z.config.bbox);
+    z.thumb.src = frameToThumb(thumb, 0, 0, thumb.width, thumb.height);
   } catch {
-    return;
+    /* thumb refresh is best-effort */
   }
-  z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
   lastFrozenBbox = [...z.config.bbox] as Bbox;
-  sendFrozenTelegram(frame, z.config.name);
+  sendFrozenTelegram(z);
 }
 
 // Same edge-trigger catch-up for Enter: enabling inject on an already-frozen zone
@@ -408,7 +419,7 @@ function injectAlreadyFrozen(z: Zone): void {
 function paintZone(z: Zone): void {
   const s = z.state;
   const pct = s.similarity * 100;
-  const kind = stateKind(s);
+  const kind = stateKind(s, threshold());
   z.simpct.textContent = `${pct.toFixed(1)}%`;
   z.simpct.style.color = KIND_COLOR[kind];
   z.pill.textContent = STATE_LABEL[kind];
@@ -490,6 +501,21 @@ async function withScreenshot<T>(use: (shot: { dataURL: string; frameW: number; 
   }
 }
 
+function bboxEq(a: Bbox, b: Bbox): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+}
+
+// Apply a resized detection bbox to an existing zone: re-baseline the freeze state
+// (the old prevImage is for the old region) and refresh the size label + thumbnail.
+function updateZoneBbox(z: Zone, bbox: Bbox, fullFrame: PixelFrame): void {
+  z.config.bbox = bbox;
+  z.state.reset();
+  const [x1, y1, x2, y2] = bbox;
+  const size = z.row.querySelector(".zsize");
+  if (size) size.textContent = `${x2 - x1}×${y2 - y1}`;
+  z.thumb.src = frameToThumb(fullFrame, x1, y1, x2 - x1, y2 - y1);
+}
+
 function selectZones(): void {
   void withScreenshot(async (shot) => {
     const res = await window.spike.openOverlay({
@@ -497,11 +523,37 @@ function selectZones(): void {
       dataURL: shot.dataURL,
       frameW: shot.frameW,
       frameH: shot.frameH,
-      // Show the already-marked zones so re-selecting is additive (the overlay
-      // numbers new zones after these and only returns the NEW ones).
+      // Existing zones load editable; the overlay returns them (possibly resized) as
+      // `existing` aligned by index, plus any newly drawn `added` ones.
       zones: zones.map((z) => z.config.bbox),
     });
-    if (res && Array.isArray(res.zones)) for (const b of res.zones) addZone(b, shot.frame);
+    if (!res) return;
+    if (Array.isArray(res.existing)) {
+      res.existing.forEach((b: Bbox, i: number) => {
+        const z = zones[i];
+        if (z && !bboxEq(z.config.bbox, b)) updateZoneBbox(z, b, shot.frame);
+      });
+    }
+    if (Array.isArray(res.added)) for (const b of res.added) addZone(b, shot.frame);
+  });
+}
+
+// Open the capture-area overlay for a zone: draw/adjust the independent Telegram
+// photo region (the detection zone is shown only as a reference).
+function openCaptureZone(z: Zone, onSet: () => void): void {
+  void withScreenshot(async (shot) => {
+    const res = await window.spike.openOverlay({
+      mode: "capture",
+      dataURL: shot.dataURL,
+      frameW: shot.frameW,
+      frameH: shot.frameH,
+      detection: z.config.bbox,
+      current: z.config.photoBbox,
+    });
+    if (res && Array.isArray(res.bbox)) {
+      z.config.photoBbox = res.bbox;
+      onSet();
+    }
   });
 }
 
@@ -551,7 +603,7 @@ function sendStatus(): void {
   if (!t) return;
   const body = zones.length
     ? zones
-        .map((z) => `${z.config.name}  ${z.config.enabled ? STATE_LABEL[stateKind(z.state)] : "OFF"}`)
+        .map((z) => `${z.config.name}  ${z.config.enabled ? STATE_LABEL[stateKind(z.state, threshold())] : "OFF"}`)
         .join("\n")
     : "No zones";
   tgEnqueue(() => t.sendText(body));

@@ -110,7 +110,7 @@ function createWindow() {
 // hands us a screenshot (a dataURL from the SAME getDisplayMedia frame it samples
 // during monitoring, so the bbox coordinate space matches). Resolves with the
 // overlay's result, or null if cancelled/closed.
-function openOverlay({ mode, dataURL, frameW, frameH, zones }) {
+function openOverlay({ mode, dataURL, frameW, frameH, zones, detection, current }) {
   return new Promise((resolve) => {
     const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
     const overlay = new BrowserWindow({
@@ -131,7 +131,7 @@ function openOverlay({ mode, dataURL, frameW, frameH, zones }) {
     if (process.platform === "darwin") overlay.setSimpleFullScreen(true);
     overlay.loadFile(path.join(__dirname, "overlay.html"));
     overlay.webContents.once("did-finish-load", () => {
-      overlay.webContents.send("overlay-init", { mode, dataURL, frameW, frameH, zones });
+      overlay.webContents.send("overlay-init", { mode, dataURL, frameW, frameH, zones, detection, current });
     });
 
     let settled = false;

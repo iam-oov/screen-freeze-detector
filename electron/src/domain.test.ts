@@ -78,18 +78,25 @@ test("zone_state reset", () => {
 
 // --- stateKind — visual/summary state label -------------------------------
 
-test("state_kind maps state to ok/warn/frozen", () => {
+test("state_kind maps state to ok/warn/frozen by threshold", () => {
   const s = new ZoneState();
+  const thr = 0.997;
 
   s.similarity = 0.5;
-  assert.equal(stateKind(s), "ok");
+  assert.equal(stateKind(s, thr), "ok"); // well below threshold -> green
 
-  s.similarity = 0.9; // exactly at warn threshold counts (>=)
-  assert.equal(stateKind(s), "warn");
+  s.similarity = 0.99; // below threshold -> still green
+  assert.equal(stateKind(s, thr), "ok");
+
+  s.similarity = thr; // exactly at threshold counts (>=) -> yellow
+  assert.equal(stateKind(s, thr), "warn");
+
+  s.similarity = 0.999; // above threshold -> yellow
+  assert.equal(stateKind(s, thr), "warn");
 
   s.isFrozen = true; // frozen wins regardless of similarity
   s.similarity = 0.0;
-  assert.equal(stateKind(s), "frozen");
+  assert.equal(stateKind(s, thr), "frozen");
 });
 
 // --- RMSComparator — pixel similarity -------------------------------------

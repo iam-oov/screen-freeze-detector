@@ -177,7 +177,7 @@
 
       .zhead, .zrow {
         display: grid;
-        grid-template-columns: 1.4fr 64px 1.4fr 84px 64px 62px 54px 118px;
+        grid-template-columns: 1.4fr 64px 84px 84px 64px 54px 150px;
         align-items: center; gap: 10px;
       }
       .zhead {
@@ -201,7 +201,6 @@
       .pill-ok { color: var(--ok); background: var(--ok-bg); }
       .pill-warn { color: var(--warn); background: var(--warn-bg); }
       .pill-frozen { color: var(--frozen); background: var(--frozen-bg); }
-      .zfrozen { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
       .zactive { display: flex; justify-content: center; }
       .zactions { display: flex; gap: 4px; justify-content: flex-end; }
       .ic {
@@ -325,7 +324,7 @@
       <div class="ztable">
         <div class="zhead">
           <span>Zone</span><span>Size</span><span>Similarity</span><span>State</span>
-          <span class="c-center">Progress</span><span class="c-center">Frozen</span><span class="c-center">Active</span><span class="c-center">Actions</span>
+          <span class="c-center">Progress</span><span class="c-center">Active</span><span class="c-center">Actions</span>
         </div>
         <div id="zones"></div>
       </div>
