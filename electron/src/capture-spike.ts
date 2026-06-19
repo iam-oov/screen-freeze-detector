@@ -114,7 +114,6 @@ interface Zone {
   progEl: HTMLElement;
 }
 const zones: Zone[] = [];
-let zoneSeq = 0;
 
 // The alarm cadence is driven by a renderer timer (updateAlarm), not the capture
 // loop, so the beep can repeat faster than captures happen. The monitor is given
@@ -318,11 +317,7 @@ function applyPrefs(p: Prefs): void {
   defocusPoint = p.defocusPoint ?? null;
   syncNumFields();
   if (Array.isArray(p.zones)) {
-    for (const zp of p.zones) {
-      restoreZone(zp);
-      const m = /^z(\d+)$/.exec(zp.name);
-      if (m) zoneSeq = Math.max(zoneSeq, Number(m[1]));
-    }
+    for (const zp of p.zones) restoreZone(zp);
   }
   updateDefocusWarning();
   refreshEmpty();
@@ -464,8 +459,15 @@ function mountZone(config: ZoneConfig): void {
   refreshCounts();
 }
 
+function nextZoneCode(): string {
+  const used = new Set(zones.map((z) => z.config.name));
+  let n = 1;
+  while (used.has(`z${n}`)) n++;
+  return `z${n}`;
+}
+
 function addZone(bbox: Bbox): void {
-  mountZone(new ZoneConfig(bbox, `z${++zoneSeq}`));
+  mountZone(new ZoneConfig(bbox, nextZoneCode()));
   scheduleSave();
 }
 
@@ -560,21 +562,32 @@ function tgNote(text: string): void {
   if (t) tgEnqueue(() => t.sendNote(text));
 }
 
+let freezeBatch: { frame: PixelFrame; name: string }[] | null = null;
+
 function sendFrozenTelegram(z: Zone): void {
   const tg = telegram;
   if (!tg || !capturer || capturer.frameWidth === 0) return;
-  const frozen = zones
-    .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
-    .map((zz) => zz.config.name);
   let frame: PixelFrame;
   try {
     frame = capturer.grabRegion(z.config.photoBbox ?? z.config.bbox);
   } catch {
     return;
   }
-  tgEnqueue(async () => {
-    await tg.sendChooser(frozen);
-    await tg.notifyFrozen(frame, z.config.name);
+  if (freezeBatch) {
+    freezeBatch.push({ frame, name: z.config.name });
+    return;
+  }
+  // Microtask, not sync: lets checkZones' mid-loop notifyFrozen calls settle
+  // every zone's state first, so all messages share one button set.
+  freezeBatch = [{ frame, name: z.config.name }];
+  queueMicrotask(() => {
+    const events = freezeBatch ?? [];
+    freezeBatch = null;
+    const codes = zones
+      .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
+      .map((zz) => zz.config.name);
+    for (const ev of events)
+      tgEnqueue(() => tg.sendFrozen(ev.frame, ev.name, codes));
   });
 }
 
@@ -729,6 +742,7 @@ function selectZones(): void {
       frameW: shot.frameW,
       frameH: shot.frameH,
       zones: zones.map((z) => z.config.bbox),
+      names: zones.map((z) => z.config.name),
     });
     if (!res) return;
     if (Array.isArray(res.existing)) {
@@ -768,6 +782,7 @@ showBtn.addEventListener('click', () => {
       frameW: shot.frameW,
       frameH: shot.frameH,
       zones: zones.map((z) => z.config.bbox),
+      names: zones.map((z) => z.config.name),
       captures: zones.map((z) => z.config.photoBbox),
     });
   });
@@ -896,7 +911,6 @@ resetBtn.addEventListener('click', () => {
   stopMonitoring();
   for (const z of zones) z.row.remove();
   zones.length = 0;
-  zoneSeq = 0;
   thresholdEl.value = String(DEFAULT_THRESHOLD);
   intervalEl.value = String(DEFAULT_INTERVAL_MS);
   consecEl.value = String(DEFAULT_CONSEC);

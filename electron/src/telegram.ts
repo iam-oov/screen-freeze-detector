@@ -1,6 +1,6 @@
 // Telegram adapters. fetch + FormData talk to the Bot API directly from the
 // renderer (which can fetch api.telegram.org and has canvas to encode PNGs).
-import type { PixelFrame, RemoteNotifier } from "./domain.ts";
+import type { PixelFrame } from "./domain.ts";
 
 const API = "https://api.telegram.org";
 
@@ -43,7 +43,7 @@ export function pixelFrameToPngBlob(frame: PixelFrame): Promise<Blob> {
   });
 }
 
-export class TelegramNotifier implements RemoteNotifier {
+export class TelegramNotifier {
   private token: string;
   private chatId: string;
   private onStatus: (s: string) => void;
@@ -58,20 +58,32 @@ export class TelegramNotifier implements RemoteNotifier {
     return Boolean(this.token && this.chatId);
   }
 
-  // Edge-triggered by FreezeMonitor. Fire-and-forget, like the Python daemon
-  // thread — never blocks the monitor loop.
-  // Returns the send promise so callers can order messages (no more out-of-order
-  // arrivals from racing fire-and-forget sends).
-  notifyFrozen(frame: PixelFrame, zoneName: string): Promise<void> {
-    if (!this.configured()) return Promise.resolve();
-    return this.send(frame, zoneName);
-  }
-
-  // Multi-zone chooser: one inline-keyboard button per frozen, telegram-enabled
-  // zone (button text + callback_data = the zone code).
-  sendChooser(codes: string[]): Promise<void> {
-    if (!this.configured() || codes.length === 0) return Promise.resolve();
-    return this.sendChooserMessage(codes);
+  // One combined freeze message: the zone photo + caption + an inline keyboard
+  // (one button per frozen, telegram-enabled zone). Tapping a button sends Enter
+  // to that zone and pre-selects it for the next typed reply. Single sendPhoto so
+  // the photo and the buttons arrive together instead of as two messages.
+  async sendFrozen(frame: PixelFrame, zoneName: string, codes: string[]): Promise<void> {
+    if (!this.configured()) return;
+    try {
+      const blob = await pixelFrameToPngBlob(frame);
+      const form = new FormData();
+      form.append("chat_id", this.chatId);
+      form.append("caption", `Frozen: ${zoneName}`);
+      form.append("photo", blob, "zone.png");
+      if (codes.length) {
+        // 4 buttons per row (Telegram allows up to 8) so the chooser stays compact.
+        const PER_ROW = 4;
+        const rows: { text: string; callback_data: string }[][] = [];
+        for (let i = 0; i < codes.length; i += PER_ROW) {
+          rows.push(codes.slice(i, i + PER_ROW).map((c) => ({ text: c, callback_data: c })));
+        }
+        form.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
+      }
+      const res = await fetch(`${API}/bot${this.token}/sendPhoto`, { method: "POST", body: form });
+      this.onStatus(res.ok ? `sent (${zoneName})` : `sendPhoto failed: HTTP ${res.status}`);
+    } catch (e) {
+      this.onStatus("send error: " + (e instanceof Error ? e.message : String(e)));
+    }
   }
 
   // A short italic note back to the chat (e.g. action confirmations).
@@ -98,42 +110,6 @@ export class TelegramNotifier implements RemoteNotifier {
     }
   }
 
-  private async sendChooserMessage(codes: string[]): Promise<void> {
-    try {
-      const n = codes.length;
-      const form = new FormData();
-      form.append("chat_id", this.chatId);
-      form.append("text", `${n} zone${n === 1 ? "" : "s"} frozen — tap to send Enter, then reply to type:`);
-      // 4 buttons per row (Telegram allows up to 8) so the chooser stays compact.
-      const PER_ROW = 4;
-      const rows: { text: string; callback_data: string }[][] = [];
-      for (let i = 0; i < codes.length; i += PER_ROW) {
-        rows.push(codes.slice(i, i + PER_ROW).map((c) => ({ text: c, callback_data: c })));
-      }
-      form.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
-      const res = await fetch(`${API}/bot${this.token}/sendMessage`, { method: "POST", body: form });
-      this.onStatus(res.ok ? `sent chooser (${codes.length})` : `chooser failed: HTTP ${res.status}`);
-    } catch (e) {
-      this.onStatus("chooser error: " + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  private async send(frame: PixelFrame, zoneName: string): Promise<void> {
-    try {
-      const blob = await pixelFrameToPngBlob(frame);
-      const form = new FormData();
-      form.append("chat_id", this.chatId);
-      form.append("caption", `Frozen: ${zoneName}`);
-      form.append("photo", blob, "zone.png");
-      const res = await fetch(`${API}/bot${this.token}/sendPhoto`, {
-        method: "POST",
-        body: form,
-      });
-      this.onStatus(res.ok ? `sent photo (${zoneName})` : `sendPhoto failed: HTTP ${res.status}`);
-    } catch (e) {
-      this.onStatus("sendPhoto error: " + (e instanceof Error ? e.message : String(e)));
-    }
-  }
 }
 
 export interface CommandSource {

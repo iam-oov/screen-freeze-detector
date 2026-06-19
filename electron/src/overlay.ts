@@ -28,6 +28,7 @@ let mode = "select";
 let frameW = 0;
 let frameH = 0;
 let existingCount = 0; // number of pre-existing zones loaded (select mode)
+let zoneNames: string[] = []; // real codes of pre-existing zones (by index)
 const edits: EditRect[] = []; // editable rects (with resize handles)
 let defocusPoint: { x: number; y: number } | null = null;
 
@@ -46,6 +47,7 @@ window.spike.onOverlayInit(
     frameW: number;
     frameH: number;
     zones?: Bbox[];
+    names?: string[];
     captures?: (Bbox | null)[];
     detection?: Bbox;
     current?: Bbox | null;
@@ -53,6 +55,7 @@ window.spike.onOverlayInit(
     mode = data.mode;
     frameW = data.frameW;
     frameH = data.frameH;
+    zoneNames = data.names ?? [];
     shot.src = data.dataURL;
     bar.innerHTML = INSTR[mode] ?? INSTR.select;
     if (mode === "select" && Array.isArray(data.zones)) {
@@ -63,10 +66,10 @@ window.spike.onOverlayInit(
       if (data.detection) drawStatic(bboxToCss(data.detection), "detection", "ref");
       if (data.current) edits.push(makeRect(bboxToCss(data.current), "capture"));
     } else if (mode === "show" && Array.isArray(data.zones)) {
-      data.zones.forEach((b, i) => drawStatic(bboxToCss(b), `z${i + 1}`, ""));
+      data.zones.forEach((b, i) => drawStatic(bboxToCss(b), nameAt(i), ""));
       if (Array.isArray(data.captures)) {
         data.captures.forEach((b, i) => {
-          if (b) drawStatic(bboxToCss(b), `zc${i + 1}`, "cap");
+          if (b) drawStatic(bboxToCss(b), `${nameAt(i)} cap`, "cap");
         });
       }
     }
@@ -127,11 +130,25 @@ function layout(r: EditRect): void {
   r.el.style.height = `${r.css.height}px`;
 }
 
+function nameAt(i: number): string {
+  return zoneNames[i] ?? `z${i + 1}`;
+}
+
+// Existing rects keep their real code; new rects preview the smallest free
+// `z<n>`, consumed in draw order — matching how addZone assigns on confirm.
 function renumber(): void {
   if (mode !== "select") return;
-  edits.forEach((r, i) => {
+  const used = new Set(zoneNames);
+  let next = 1;
+  const freeCode = (): string => {
+    while (used.has(`z${next}`)) next++;
+    const code = `z${next}`;
+    used.add(code);
+    return code;
+  };
+  edits.forEach((r) => {
     const t = r.el.querySelector(".tag");
-    if (t) t.textContent = `z${i + 1}`;
+    if (t) t.textContent = typeof r.tag === "number" ? nameAt(r.tag) : freeCode();
   });
 }
 
