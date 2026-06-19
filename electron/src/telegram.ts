@@ -82,6 +82,12 @@ export class TelegramNotifier implements RemoteNotifier {
     return this.sendMessageHtml(`<i>${escapeHtml(text)}</i>`);
   }
 
+  // A monospaced block back to the chat (e.g. the zones summary) so columns align.
+  sendText(text: string): Promise<void> {
+    if (!this.configured()) return Promise.resolve();
+    return this.sendMessageHtml(`<pre>${escapeHtml(text)}</pre>`);
+  }
+
   private async sendMessageHtml(html: string): Promise<void> {
     try {
       const form = new FormData();

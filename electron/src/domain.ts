@@ -67,6 +67,17 @@ export class ZoneState {
   }
 }
 
+export type StateKind = "ok" | "warn" | "frozen";
+
+// Visual/summary label for a zone: frozen wins, then "warn" once captures are
+// near-identical (>= 0.9), else "ok". Distinct from the freeze threshold (~0.997)
+// — this is just the at-a-glance color/status.
+export function stateKind(s: ZoneState): StateKind {
+  if (s.isFrozen) return "frozen";
+  if (s.similarity >= 0.9) return "warn";
+  return "ok";
+}
+
 // --- Image comparison ------------------------------------------------------
 
 export interface ImageComparator {

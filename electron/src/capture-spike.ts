@@ -8,13 +8,17 @@ import {
   RMSComparator,
   ZoneConfig,
   ZoneState,
+  stateKind,
   type Bbox,
   type PixelFrame,
 } from "./domain.ts";
 import { ScreenCapturer, startCapture, bboxCenterToScreen } from "./capture.ts";
 import { WebAudioSound } from "./sound.ts";
 import { TelegramNotifier, TelegramPoller, parseZoneReply } from "./telegram.ts";
-import { HOTKEYS, DEFAULTS, TELEGRAM_COMMANDS } from "../constants.js";
+import { HOTKEYS, DEFAULTS, TELEGRAM_COMMANDS, TELEGRAM_GLOBAL_COMMANDS } from "../constants.js";
+
+const STATE_LABEL = { ok: "OK", warn: "Watching", frozen: "Frozen" } as const;
+const KIND_COLOR = { ok: "var(--ok)", warn: "var(--warn-bar)", frozen: "var(--frozen)" } as const;
 
 const DEFAULT_THRESHOLD = DEFAULTS.threshold;
 const DEFAULT_CONSEC = DEFAULTS.consec;
@@ -74,7 +78,6 @@ interface Zone {
   row: HTMLElement;
   thumb: HTMLImageElement;
   dot: HTMLElement;
-  simfill: HTMLElement;
   simpct: HTMLElement;
   pill: HTMLElement;
   progEl: HTMLElement;
@@ -198,7 +201,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
   row.innerHTML =
     '<div class="zname"><img class="thumb" alt="" /><span class="zdot"></span><span class="nm"></span></div>' +
     `<span class="zsize">${x2 - x1}×${y2 - y1}</span>` +
-    '<div class="zsim"><div class="simbar"><div class="simfill"></div></div><span class="simpct">—</span></div>' +
+    '<div class="zsim"><span class="simpct">—</span></div>' +
     '<span class="zstate"><span class="pill pill-ok">OK</span></span>' +
     '<span class="zprog c-center">—</span>' +
     '<span class="zfrozen c-center">0</span>' +
@@ -213,7 +216,6 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     row,
     thumb: q<HTMLImageElement>(".thumb"),
     dot: q<HTMLElement>(".zdot"),
-    simfill: q<HTMLElement>(".simfill"),
     simpct: q<HTMLElement>(".simpct"),
     pill: q<HTMLElement>(".pill"),
     progEl: q<HTMLElement>(".zprog"),
@@ -239,6 +241,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
   ent.addEventListener("click", () => {
     config.injectEnabled = !config.injectEnabled;
     paintEnter();
+    if (config.injectEnabled) injectAlreadyFrozen(zone);
   });
   const snd = q<HTMLButtonElement>(".snd");
   const paintSound = (): void => {
@@ -262,6 +265,7 @@ function addZone(bbox: Bbox, fullFrame?: PixelFrame): void {
     config.telegramEnabled = !config.telegramEnabled;
     paintTg();
     updateDefocusWarning();
+    if (config.telegramEnabled) notifyAlreadyFrozen(zone);
   });
   q<HTMLButtonElement>(".del").addEventListener("click", () => removeZone(zone));
 
@@ -348,6 +352,23 @@ function tgNote(text: string): void {
   if (t) tgEnqueue(() => t.sendNote(text));
 }
 
+// Send the frozen-zone chooser + photo to Telegram (serialized). Shared by the
+// edge-trigger notifier and the "enabled while already frozen" catch-up.
+// Always offer the buttons (even for a single zone) so you can target the right
+// zone with one tap, regardless of where your focus is. Buttons first, then the
+// screenshot — serialized so order is deterministic.
+function sendFrozenTelegram(frame: PixelFrame, name: string): void {
+  const tg = telegram;
+  if (!tg) return;
+  const frozen = zones
+    .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
+    .map((zz) => zz.config.name);
+  tgEnqueue(async () => {
+    await tg.sendChooser(frozen);
+    await tg.notifyFrozen(frame, name);
+  });
+}
+
 const notifier = {
   notifyFrozen(frame: PixelFrame, name: string): void {
     const z = zones.find((zz) => zz.config.name === name);
@@ -357,38 +378,45 @@ const notifier = {
       z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
       lastFrozenBbox = [...z.config.bbox] as Bbox;
     }
-    if (telegram && z && z.config.telegramEnabled) {
-      const tg = telegram;
-      const frozen = zones
-        .filter((zz) => zz.state.isFrozen && zz.config.telegramEnabled)
-        .map((zz) => zz.config.name);
-      // Always offer the buttons (even for a single zone) so you can target the
-      // right zone with one tap, regardless of where your focus is. Buttons first,
-      // then the screenshot — serialized so order is deterministic.
-      tgEnqueue(async () => {
-        await tg.sendChooser(frozen);
-        await tg.notifyFrozen(frame, name);
-      });
-    }
+    if (z && z.config.telegramEnabled) sendFrozenTelegram(frame, name);
   },
 };
+
+// Edge-trigger catch-up: enabling Telegram on a zone that is ALREADY frozen would
+// otherwise send nothing (the freeze edge already passed). Grab a fresh frame and
+// fire the same chooser + photo once. No frozenEdges bump — it's not a new freeze.
+function notifyAlreadyFrozen(z: Zone): void {
+  if (!telegram || !z.config.telegramEnabled || !z.state.isFrozen) return;
+  if (!capturer || capturer.frameWidth === 0) return;
+  let frame: PixelFrame;
+  try {
+    frame = capturer.grabRegion(z.config.bbox);
+  } catch {
+    return;
+  }
+  z.thumb.src = frameToThumb(frame, 0, 0, frame.width, frame.height);
+  lastFrozenBbox = [...z.config.bbox] as Bbox;
+  sendFrozenTelegram(frame, z.config.name);
+}
+
+// Same edge-trigger catch-up for Enter: enabling inject on an already-frozen zone
+// would otherwise never fire (the freeze edge already passed). Press Enter once.
+function injectAlreadyFrozen(z: Zone): void {
+  if (z.config.injectEnabled && z.state.isFrozen) injector.inject(z.config.bbox);
+}
 
 function paintZone(z: Zone): void {
   const s = z.state;
   const pct = s.similarity * 100;
-  let kind: "ok" | "warn" | "frozen";
-  if (s.isFrozen) kind = "frozen";
-  else if (s.similarity >= 0.9) kind = "warn";
-  else kind = "ok";
-  z.simfill.style.width = `${pct.toFixed(1)}%`;
-  z.simfill.className = `simfill${kind === "ok" ? "" : " " + kind}`;
+  const kind = stateKind(s);
   z.simpct.textContent = `${pct.toFixed(1)}%`;
-  z.pill.textContent = kind === "frozen" ? "Frozen" : kind === "warn" ? "Watching" : "OK";
+  z.simpct.style.color = KIND_COLOR[kind];
+  z.pill.textContent = STATE_LABEL[kind];
   z.pill.className = `pill pill-${kind}`;
   // Consecutive near-identical captures so far, toward the freeze threshold.
   const need = consec();
   z.progEl.textContent = `${Math.min(s.frozenCount, need)}/${need}`;
-  z.dot.style.background = kind === "frozen" ? "var(--frozen)" : kind === "warn" ? "var(--warn-bar)" : "var(--ok)";
+  z.dot.style.background = KIND_COLOR[kind];
 }
 
 function tick(): void {
@@ -516,9 +544,27 @@ function zoneByName(name: string | null): Zone | null {
   return name ? (zones.find((z) => z.config.name === name) ?? null) : null;
 }
 
-// A chat reply: resolve the target zone (explicit "z2:" prefix -> last tapped ->
-// last frozen), then run a command word ("enter") or type the message.
+// Reply to the chat with one line per zone: name + current state. Global (no
+// target zone needed), serialized through the same queue as the other sends.
+function sendStatus(): void {
+  const t = telegram;
+  if (!t) return;
+  const body = zones.length
+    ? zones
+        .map((z) => `${z.config.name}  ${z.config.enabled ? STATE_LABEL[stateKind(z.state)] : "OFF"}`)
+        .join("\n")
+    : "No zones";
+  tgEnqueue(() => t.sendText(body));
+}
+
+// A chat reply: a global command ("/status") replies with the summary; otherwise
+// resolve the target zone (explicit "z2:" prefix -> last tapped -> last frozen),
+// then run a command word ("enter") or type the message.
 async function handleReply(text: string): Promise<void> {
+  if (TELEGRAM_GLOBAL_COMMANDS[text.trim().toLowerCase()] === "status") {
+    sendStatus();
+    return;
+  }
   const { zone, message } = parseZoneReply(text, zones.map((z) => z.config.name));
   const target =
     zoneByName(zone)?.config.bbox ?? zoneByName(selectedZoneName)?.config.bbox ?? lastFrozenBbox;

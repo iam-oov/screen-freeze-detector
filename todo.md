@@ -9,4 +9,3 @@
 5. eliminar la parte de python (codigo)
 6. Hilos para cancelar lo que se esta transcribiendo desde telegram
 7. boton para "cancelar" la transcripcion desde telegram
-8. comandos en telegram para ver el resumen de la tabla

@@ -6,4 +6,7 @@ module.exports = {
   // Telegram text commands: a reply equal to one of these words (trimmed,
   // case-insensitive) runs the action instead of being typed. Add more here.
   TELEGRAM_COMMANDS: { enter: 'enter' }, // "enter" -> simulate the Enter key only
+  // Global Telegram commands: a reply equal to one of these (trimmed,
+  // case-insensitive) runs a chat-wide action instead of targeting a zone.
+  TELEGRAM_GLOBAL_COMMANDS: { '/status': 'status' }, // "/status" -> reply with the zones summary
 };

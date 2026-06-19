@@ -7,6 +7,7 @@ import {
   ZoneState,
   RMSComparator,
   FreezeMonitor,
+  stateKind,
   type Bbox,
   type PixelFrame,
 } from "./domain.ts";
@@ -73,6 +74,22 @@ test("zone_state reset", () => {
   assert.equal(s.similarity, 0.0);
   assert.equal(s.frozenCount, 0);
   assert.equal(s.isFrozen, false);
+});
+
+// --- stateKind — visual/summary state label -------------------------------
+
+test("state_kind maps state to ok/warn/frozen", () => {
+  const s = new ZoneState();
+
+  s.similarity = 0.5;
+  assert.equal(stateKind(s), "ok");
+
+  s.similarity = 0.9; // exactly at warn threshold counts (>=)
+  assert.equal(stateKind(s), "warn");
+
+  s.isFrozen = true; // frozen wins regardless of similarity
+  s.similarity = 0.0;
+  assert.equal(stateKind(s), "frozen");
 });
 
 // --- RMSComparator — pixel similarity -------------------------------------
