@@ -347,7 +347,7 @@ function activeCount(): number {
 
 function refreshCounts(): void {
   zCount.textContent = `${activeCount()} active`;
-  showBtn.disabled = zones.length <= 1;
+  showBtn.disabled = zones.length === 0;
   toggleBtn.disabled = !running && activeCount() === 0;
   footStatus.textContent = running
     ? `Watching ${activeCount()} of ${zones.length} zones`
@@ -596,6 +596,7 @@ showBtn.addEventListener("click", () => {
       frameW: shot.frameW,
       frameH: shot.frameH,
       zones: zones.map((z) => z.config.bbox),
+      captures: zones.map((z) => z.config.photoBbox),
     });
   });
 });

@@ -7,4 +7,3 @@
 - etc
 
 3. eliminar la parte de python (codigo)
-4. Agrgar una barra global para el volumen de las notificaciones

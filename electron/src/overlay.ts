@@ -46,6 +46,7 @@ window.spike.onOverlayInit(
     frameW: number;
     frameH: number;
     zones?: Bbox[];
+    captures?: (Bbox | null)[];
     detection?: Bbox;
     current?: Bbox | null;
   }) => {
@@ -63,6 +64,11 @@ window.spike.onOverlayInit(
       if (data.current) edits.push(makeRect(bboxToCss(data.current), "capture"));
     } else if (mode === "show" && Array.isArray(data.zones)) {
       data.zones.forEach((b, i) => drawStatic(bboxToCss(b), `z${i + 1}`, ""));
+      if (Array.isArray(data.captures)) {
+        data.captures.forEach((b, i) => {
+          if (b) drawStatic(bboxToCss(b), `zc${i + 1}`, "cap");
+        });
+      }
     }
   },
 );
@@ -85,8 +91,8 @@ function toBbox(c: CssRect): Bbox {
   return cssRectToBbox(c, frameW, frameH, d.w, d.h);
 }
 
-// A non-interactive rect: "" = solid green (show mode), "ref" = dashed accent
-// (the detection reference in capture mode).
+// A non-interactive rect: "" = green detection, "cap" = blue capture (show mode),
+// "ref" = dashed accent (the detection reference in capture mode).
 function drawStatic(c: CssRect, label: string, cls: string): void {
   const el = document.createElement("div");
   el.className = cls ? `rect ${cls}` : "rect";
