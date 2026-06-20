@@ -18,6 +18,7 @@ import {
   TelegramNotifier,
   TelegramPoller,
   parseZoneReply,
+  parseCtrlc,
 } from './telegram.ts';
 import {
   HOTKEYS,
@@ -502,16 +503,27 @@ function refreshCounts(): void {
 }
 
 // --- monitoring loop -------------------------------------------------------
-function injectInto(bbox: Bbox, text: string): Promise<unknown> {
-  if (!capturer || capturer.frameWidth === 0) return Promise.resolve();
-  const { x, y } = bboxCenterToScreen(
+function zoneScreenPoint(bbox: Bbox): { x: number; y: number } | null {
+  if (!capturer || capturer.frameWidth === 0) return null;
+  return bboxCenterToScreen(
     bbox,
     capturer.frameWidth,
     capturer.frameHeight,
     window.screen.width,
     window.screen.height,
   );
-  return window.spike.runInjection({ x, y, text });
+}
+
+function injectInto(bbox: Bbox, text: string): Promise<unknown> {
+  const p = zoneScreenPoint(bbox);
+  if (!p) return Promise.resolve();
+  return window.spike.runInjection({ x: p.x, y: p.y, text });
+}
+
+function interruptZone(bbox: Bbox): Promise<unknown> {
+  const p = zoneScreenPoint(bbox);
+  if (!p) return Promise.resolve();
+  return window.spike.runInjection({ x: p.x, y: p.y, ctrlC: true });
 }
 
 const injector = {
@@ -825,6 +837,7 @@ function sendHelp(): void {
     '',
     'z1: text   type into a zone',
     'z1: enter  press Enter',
+    'z1: ctrlc  send Ctrl+C',
   ];
   tgEnqueue(() => t.sendText(lines.join('\n')));
 }
@@ -878,6 +891,21 @@ async function handleReply(text: string): Promise<void> {
     if (cmd === 'start') await startMonitoring();
     else if (cmd === 'stop') stopMonitoring();
     sendStatus(); // reply with the (possibly updated) state
+    return;
+  }
+  // Ctrl+C is destructive: require an explicit zone ("z2 ctrlc" or "z2: ctrlc").
+  // A bare "ctrlc" never interrupts.
+  const ctrlcZone = parseCtrlc(norm);
+  if (ctrlcZone) {
+    const z = zoneByName(ctrlcZone);
+    if (!z) tgNote(`Unknown zone: ${ctrlcZone}`);
+    else if (!capturer || capturer.frameWidth === 0)
+      tgNote('Reply ignored: no capture yet');
+    else {
+      await interruptZone(z.config.bbox);
+      tgEl.textContent = `Ctrl+C → ${z.config.name}`;
+      tgNote(`✓ Ctrl+C → ${z.config.name}`);
+    }
     return;
   }
   const { zone, message } = parseZoneReply(

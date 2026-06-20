@@ -40,6 +40,13 @@ export function parseZoneReply(
   return { zone: null, message: text };
 }
 
+// "<code> ctrlc" or "<code>: ctrlc" -> the zone code (a bare "ctrlc" -> null).
+// Ctrl+C is destructive, so it requires an explicit zone code.
+export function parseCtrlc(text: string): string | null {
+  const m = text.trim().match(/^([^\s:]+)[:\s]\s*ctrlc$/i);
+  return m ? m[1] : null;
+}
+
 // Encode a captured RGBA frame to a PNG Blob via canvas (Telegram sendPhoto
 // wants a file upload).
 export function pixelFrameToPngBlob(frame: PixelFrame): Promise<Blob> {

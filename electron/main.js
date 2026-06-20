@@ -254,7 +254,7 @@ ipcMain.handle('set-window-visible', (_e, visible) => {
 });
 
 // Move to the target point -> click (steal focus) -> paste text -> Enter.
-async function doInjection({ x, y, text }) {
+async function doInjection({ x, y, text, ctrlC }) {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || 'nut.js not loaded' };
   }
@@ -265,6 +265,13 @@ async function doInjection({ x, y, text }) {
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
     steps.push('clicked (focus stolen)');
+    if (ctrlC) {
+      // Ctrl+C = SIGINT in a terminal on both Linux and macOS (not Cmd+C).
+      await keyboard.pressKey(Key.LeftControl, Key.C);
+      await keyboard.releaseKey(Key.LeftControl, Key.C);
+      steps.push('sent Ctrl+C');
+      return { ok: true, steps };
+    }
     if (text) {
       // Paste via the clipboard instead of keyboard.type: nut.js drops accented /
       // non-ASCII characters (they go through dead keys). Set the clipboard, send

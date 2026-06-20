@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseZoneReply, buttonRows } from "./telegram.ts";
+import { parseZoneReply, buttonRows, parseCtrlc } from "./telegram.ts";
 
 const CODES = ["z1", "z2", "z3"];
 
@@ -52,4 +52,24 @@ test("buttonRows: chunks into rows of 4", () => {
 
 test("buttonRows: empty codes -> no rows", () => {
   assert.deepEqual(buttonRows([]), []);
+});
+
+test("parseCtrlc: space form returns the zone code", () => {
+  assert.equal(parseCtrlc("z2 ctrlc"), "z2");
+});
+
+test("parseCtrlc: colon form returns the zone code", () => {
+  assert.equal(parseCtrlc("z2: ctrlc"), "z2");
+});
+
+test("parseCtrlc: case-insensitive", () => {
+  assert.equal(parseCtrlc("Z2 CTRLC"), "Z2");
+});
+
+test("parseCtrlc: bare ctrlc -> null (requires an explicit zone)", () => {
+  assert.equal(parseCtrlc("ctrlc"), null);
+});
+
+test("parseCtrlc: trailing ctrlc inside a longer message -> null", () => {
+  assert.equal(parseCtrlc("z2: type ctrlc please"), null);
 });
