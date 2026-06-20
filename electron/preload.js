@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("spike", {
   // --- main window ---------------------------------------------------------
   runInjection: (params) => ipcRenderer.invoke("run-injection", params),
+  focusApp: () => ipcRenderer.invoke("focus-app"),
   // Global F11/F12 (registered in main) -> 'start'/'stop'.
   onHotkey: (callback) => ipcRenderer.on("hotkey", (_e, which) => callback(which)),
   getTelegramConfig: () => ipcRenderer.invoke("get-telegram-config"),
@@ -14,7 +15,6 @@ contextBridge.exposeInMainWorld("spike", {
   getVersion: () => ipcRenderer.invoke("get-version"),
   // Opens the fullscreen overlay; resolves with the result:
   //   select  -> { zones: Bbox[] } | null
-  //   defocus -> { point: {x,y} }  | null
   //   show    -> null
   openOverlay: (params) => ipcRenderer.invoke("open-overlay", params),
   setWindowVisible: (visible) => ipcRenderer.invoke("set-window-visible", visible),

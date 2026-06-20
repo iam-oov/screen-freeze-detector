@@ -1,4 +1,4 @@
-// Fullscreen overlay renderer for zone selection / capture-area / show / defocus.
+// Fullscreen overlay renderer for zone selection / capture-area / show.
 //
 // The win-win: the overlay shows the captured screenshot at FULL screen size
 // (max interactive precision) and maps geometry with cssRectToBbox/bboxToCss using
@@ -18,7 +18,6 @@ const $ = (id: string): HTMLElement => {
 };
 const shot = $("shot") as HTMLImageElement;
 const bar = $("bar");
-const dot = $("dot");
 
 type CssRect = { left: number; top: number; width: number; height: number };
 type Tag = number | "new" | "capture"; // existing-zone index | newly drawn | the capture rect
@@ -30,14 +29,12 @@ let frameH = 0;
 let existingCount = 0; // number of pre-existing zones loaded (select mode)
 let zoneNames: string[] = []; // real codes of pre-existing zones (by index)
 const edits: EditRect[] = []; // editable rects (with resize handles)
-let defocusPoint: { x: number; y: number } | null = null;
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const INSTR: Record<string, string> = {
   select: "Drag to draw · drag a handle to resize, the body to move · Right-click: undo new · <b>Enter</b>: confirm · <b>Esc</b>: cancel",
   capture: "Drag the Telegram capture area · resize with handles · <b>Enter</b>: confirm · <b>Esc</b>: cancel",
   show: "Showing watched zones · click or <b>Esc</b> to close",
-  defocus: "Click the defocus point · <b>Enter</b>: confirm · <b>Esc</b>: cancel",
 };
 
 window.spike.onOverlayInit(
@@ -205,15 +202,6 @@ function applyResize(s: CssRect, pos: string, dx: number, dy: number): CssRect {
 
 document.addEventListener("pointerdown", (e) => {
   const p = pt(e as PointerEvent);
-  if (mode === "defocus") {
-    // Overlay covers the logical screen at (0,0), so click CSS coords ARE the
-    // logical screen points nut.js needs — no conversion.
-    defocusPoint = { x: Math.round(p.x), y: Math.round(p.y) };
-    dot.style.left = `${p.x}px`;
-    dot.style.top = `${p.y}px`;
-    dot.style.display = "block";
-    return;
-  }
   if (mode !== "select" && mode !== "capture") return;
   const tgt = e.target as HTMLElement;
   if (tgt.classList.contains("handle")) {
@@ -300,8 +288,6 @@ document.addEventListener("keydown", (e) => {
     } else if (mode === "capture") {
       const r = edits.find((x) => x.tag === "capture");
       window.spike.overlayDone(r ? { bbox: toBbox(r.css) } : null);
-    } else if (mode === "defocus") {
-      window.spike.overlayDone(defocusPoint ? { point: defocusPoint } : null);
     } else {
       window.spike.overlayDone(null);
     }

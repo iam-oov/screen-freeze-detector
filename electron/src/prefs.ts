@@ -15,7 +15,6 @@ export interface Prefs {
   intervalMs: number;
   consec: number;
   volume: number;
-  defocusPoint: { x: number; y: number } | null;
   zones: ZonePrefs[];
 }
 

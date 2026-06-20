@@ -54,6 +54,7 @@
       .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
       .badge-ok { color: var(--ok); background: var(--ok-bg); }
       .badge-idle { color: var(--muted); background: #f1f1f4; }
+      .badge-err { color: var(--accent); background: #fde8ee; }
       .btn-toggle {
         border: none; border-radius: 9px; padding: 10px 18px;
         font-size: 14px; font-weight: 600; color: #fff; background: var(--accent);
@@ -151,12 +152,6 @@
       .btn-outline:disabled { opacity: 0.45; cursor: default; }
       .btn-outline:disabled:hover { background: #fff; }
       .btn-outline.warn { border-color: var(--warn-bar); background: var(--warn-bg); color: var(--warn); }
-      #defocusStatus.warn {
-        display: inline-flex; align-items: center; gap: 5px;
-        color: var(--warn); background: var(--warn-bg);
-        border: 1px solid var(--warn-bar); border-radius: 999px;
-        padding: 3px 14px; margin-left: 14px; font-size: 12px; font-weight: 600;
-      }
       .tg-status { font-size: 12px; min-height: 14px; }
 
       /* toggle switch */
@@ -343,10 +338,6 @@
             <div class="field">
               <label for="tgChat">Chat ID</label>
               <input type="text" id="tgChat" class="text-input" placeholder="123456789" />
-            </div>
-            <div class="field field-inline">
-              <button id="defocusBtn" class="btn-outline">Defocus click</button>
-              <span id="defocusStatus" class="muted">No point set</span>
             </div>
             <div id="tg" class="tg-status muted"></div>
           </div>

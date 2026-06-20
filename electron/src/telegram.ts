@@ -73,6 +73,26 @@ export class TelegramNotifier {
     return Boolean(this.token && this.chatId);
   }
 
+  // Validate the creds in one silent call (no message sent): getChat checks the
+  // token AND that the chat_id is reachable by the bot.
+  async verify(): Promise<
+    | { status: "ok" }
+    | { status: "bad-token" }
+    | { status: "bad-chat" }
+    | { status: "offline"; error: string }
+  > {
+    try {
+      const res = await fetch(
+        `${API}/bot${this.token}/getChat?chat_id=${encodeURIComponent(this.chatId)}`,
+      );
+      const data = await res.json();
+      if (data.ok) return { status: "ok" };
+      return { status: data.error_code === 401 ? "bad-token" : "bad-chat" };
+    } catch (e) {
+      return { status: "offline", error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   async sendPhoto(frame: PixelFrame, caption: string, replyMarkup?: object): Promise<void> {
     if (!this.configured()) return;
     try {

@@ -263,9 +263,8 @@ ipcMain.handle('set-window-visible', (_e, visible) => {
   }
 });
 
-// Move to the target point -> click (steal focus) -> paste text -> Enter, then an
-// optional defocus click (drops the blinking caret so the zone can re-freeze).
-async function doInjection({ x, y, text, defocus, clickOnly }) {
+// Move to the target point -> click (steal focus) -> paste text -> Enter.
+async function doInjection({ x, y, text }) {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || 'nut.js not loaded' };
   }
@@ -276,7 +275,6 @@ async function doInjection({ x, y, text, defocus, clickOnly }) {
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
     steps.push('clicked (focus stolen)');
-    if (clickOnly) return { ok: true, steps }; // /defocus: move + click, no Enter
     if (text) {
       // Paste via the clipboard instead of keyboard.type: nut.js drops accented /
       // non-ASCII characters (they go through dead keys). Set the clipboard, send
@@ -293,11 +291,6 @@ async function doInjection({ x, y, text, defocus, clickOnly }) {
     }
     await keyboard.type(Key.Enter);
     steps.push('pressed Enter');
-    if (defocus && typeof defocus.x === 'number') {
-      await mouse.setPosition(new Point(defocus.x, defocus.y));
-      await mouse.click(Button.LEFT);
-      steps.push(`defocus click at (${defocus.x}, ${defocus.y})`);
-    }
     return { ok: true, steps };
   } catch (err) {
     // On macOS the most likely cause is missing Accessibility permission.
@@ -317,4 +310,13 @@ ipcMain.handle('run-injection', (_evt, params) => {
   const run = injectionChain.then(() => doInjection(params));
   injectionChain = run.catch(() => {});
   return run;
+});
+
+// Defocus: bring our own window to the front so the watched zone loses input
+// focus (its caret stops blinking and the zone can re-freeze).
+ipcMain.handle('focus-app', () => {
+  if (mainWin) {
+    mainWin.show();
+    mainWin.focus();
+  }
 });

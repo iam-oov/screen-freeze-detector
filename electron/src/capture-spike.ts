@@ -74,9 +74,7 @@ const volPlus = $('volPlus') as HTMLButtonElement;
 const tgBadge = $('tgBadge');
 const tgToken = $('tgToken') as HTMLInputElement;
 const tgChat = $('tgChat') as HTMLInputElement;
-const defocusBtn = $('defocusBtn') as HTMLButtonElement;
 const resetBtn = $('resetBtn') as HTMLButtonElement;
-const defocusStatus = $('defocusStatus');
 const tgEl = $('tg');
 const zCount = $('zCount');
 const selectBtn = $('selectBtn') as HTMLButtonElement;
@@ -154,7 +152,6 @@ let telegram: TelegramNotifier | null = null;
 let poller: TelegramPoller | null = null;
 let lastFrozenBbox: Bbox | null = null;
 let selectedZoneName: string | null = null; // last zone tapped in Telegram
-let defocusPoint: { x: number; y: number } | null = null;
 
 // --- live settings ---------------------------------------------------------
 const num = (el: HTMLInputElement, fallback: number): number => {
@@ -295,7 +292,6 @@ function collectPrefs(): Prefs {
     intervalMs: intervalMs(),
     consec: consec(),
     volume: volume(),
-    defocusPoint,
     zones: zones.map((z) => ({
       name: z.config.name,
       bbox: z.config.bbox,
@@ -313,12 +309,10 @@ function applyPrefs(p: Prefs): void {
   if (typeof p.intervalMs === 'number') intervalEl.value = String(p.intervalMs);
   if (typeof p.consec === 'number') consecEl.value = String(p.consec);
   if (typeof p.volume === 'number') volumeEl.value = String(p.volume);
-  defocusPoint = p.defocusPoint ?? null;
   syncNumFields();
   if (Array.isArray(p.zones)) {
     for (const zp of p.zones) restoreZone(zp);
   }
-  updateDefocusWarning();
   refreshEmpty();
   refreshCounts();
 }
@@ -438,7 +432,6 @@ function mountZone(config: ZoneConfig): void {
   tg.addEventListener('click', () => {
     config.telegramEnabled = !config.telegramEnabled;
     paintTg();
-    updateDefocusWarning();
     if (config.telegramEnabled) notifyAlreadyFrozen(zone);
     scheduleSave();
   });
@@ -490,28 +483,7 @@ function removeZone(zone: Zone): void {
   if (i >= 0) zones.splice(i, 1);
   refreshEmpty();
   refreshCounts();
-  updateDefocusWarning();
   scheduleSave();
-}
-
-function updateDefocusWarning(): void {
-  const needsDefocus =
-    defocusPoint === null && zones.some((z) => z.config.telegramEnabled);
-  defocusBtn.classList.toggle('warn', needsDefocus);
-  if (defocusPoint) {
-    defocusStatus.textContent = `Point at (${defocusPoint.x}, ${defocusPoint.y})`;
-    defocusStatus.classList.remove('warn');
-  } else {
-    defocusStatus.textContent = needsDefocus
-      ? "⚠ Set a defocus point — replies won't re-freeze"
-      : 'No point set';
-    defocusStatus.classList.toggle('warn', needsDefocus);
-  }
-  for (const z of zones) {
-    z.row
-      .querySelector('.tg')
-      ?.classList.toggle('warn', needsDefocus && z.config.telegramEnabled);
-  }
 }
 
 function activeCount(): number {
@@ -530,11 +502,7 @@ function refreshCounts(): void {
 }
 
 // --- monitoring loop -------------------------------------------------------
-function injectInto(
-  bbox: Bbox,
-  text: string,
-  defocus?: { x: number; y: number },
-): Promise<unknown> {
+function injectInto(bbox: Bbox, text: string): Promise<unknown> {
   if (!capturer || capturer.frameWidth === 0) return Promise.resolve();
   const { x, y } = bboxCenterToScreen(
     bbox,
@@ -543,7 +511,7 @@ function injectInto(
     window.screen.width,
     window.screen.height,
   );
-  return window.spike.runInjection({ x, y, text, defocus });
+  return window.spike.runInjection({ x, y, text });
 }
 
 const injector = {
@@ -787,26 +755,13 @@ showBtn.addEventListener('click', () => {
   });
 });
 
-defocusBtn.addEventListener('click', () => {
-  void withScreenshot(async (shot) => {
-    const res = await window.spike.openOverlay({
-      mode: 'defocus',
-      dataURL: shot.dataURL,
-      frameW: shot.frameW,
-      frameH: shot.frameH,
-    });
-    if (res && res.point) {
-      defocusPoint = res.point;
-      updateDefocusWarning();
-      scheduleSave();
-    }
-  });
-});
-
 // --- Telegram --------------------------------------------------------------
-function setTgBadge(connected: boolean): void {
-  tgBadge.className = `badge ${connected ? 'badge-ok' : 'badge-idle'}`;
-  tgBadge.innerHTML = `<span class="dot"></span> ${connected ? 'Connected' : 'Not set'}`;
+type TgBadgeState = 'idle' | 'checking' | 'ok' | 'error';
+function setTgBadge(state: TgBadgeState, label: string): void {
+  const cls =
+    state === 'ok' ? 'badge-ok' : state === 'error' ? 'badge-err' : 'badge-idle';
+  tgBadge.className = `badge ${cls}`;
+  tgBadge.innerHTML = `<span class="dot"></span> ${label}`;
 }
 
 function zoneByName(name: string | null): Zone | null {
@@ -864,7 +819,7 @@ function sendHelp(): void {
     'start / stop  monitoring',
     'zones         buttons per zone',
     'ss <code>     zone state photo',
-    'defocus       click defocus point',
+    'defocus       drop zone focus',
     'help          this list',
     '',
     'z1: text   type into a zone',
@@ -884,17 +839,13 @@ function sendZoneButtons(): void {
   tgEnqueue(() => t.sendButtons('Tap a zone for its current state:', codes, 'ss:'));
 }
 
-function runDefocus(): void {
-  if (!defocusPoint) {
-    tgNote('No defocus point set');
-    return;
+async function runDefocus(): Promise<void> {
+  try {
+    await window.spike.focusApp();
+    tgNote('✓ Defocus');
+  } catch (e) {
+    tgNote('Defocus failed: ' + (e instanceof Error ? e.message : String(e)));
   }
-  void window.spike.runInjection({
-    x: defocusPoint.x,
-    y: defocusPoint.y,
-    clickOnly: true,
-  });
-  tgNote('✓ Defocus');
 }
 
 async function handleReply(text: string): Promise<void> {
@@ -949,7 +900,8 @@ async function handleReply(text: string): Promise<void> {
     tgEl.textContent = `Enter${tag}`;
     tgNote(`✓ Enter${tag}`);
   } else {
-    await injectInto(target, message, defocusPoint ?? undefined);
+    await injectInto(target, message);
+    void window.spike.focusApp();
     tgEl.textContent = `Typed${tag}: ${JSON.stringify(message)}`;
     tgNote(`✓ Typed${tag}: ${message}`);
   }
@@ -980,12 +932,22 @@ function applyCreds(token: string, chatId: string): void {
     );
     poller = new TelegramPoller(token, chatId, handleReply, onZoneCallback);
     poller.start(); // remote control is on whenever creds are set
-    setTgBadge(true);
+    setTgBadge('checking', 'Checking…');
+    void verifyCreds(telegram);
   } else {
     telegram = null;
     poller = null;
-    setTgBadge(false);
+    setTgBadge('idle', 'Not set');
   }
+}
+
+async function verifyCreds(notifier: TelegramNotifier): Promise<void> {
+  const r = await notifier.verify();
+  if (notifier !== telegram) return; // creds changed during the check — ignore
+  if (r.status === 'ok') setTgBadge('ok', 'Connected');
+  else if (r.status === 'bad-token') setTgBadge('error', 'Bad token');
+  else if (r.status === 'bad-chat') setTgBadge('error', 'Bad chat ID');
+  else setTgBadge('error', 'Offline');
 }
 
 let credsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1016,9 +978,7 @@ resetBtn.addEventListener('click', () => {
   intervalEl.value = String(DEFAULT_INTERVAL_MS);
   consecEl.value = String(DEFAULT_CONSEC);
   volumeEl.value = '1';
-  defocusPoint = null;
   syncNumFields();
-  updateDefocusWarning();
   refreshEmpty();
   refreshCounts();
   scheduleSave();
