@@ -265,7 +265,7 @@ ipcMain.handle('set-window-visible', (_e, visible) => {
 
 // Move to the target point -> click (steal focus) -> paste text -> Enter, then an
 // optional defocus click (drops the blinking caret so the zone can re-freeze).
-async function doInjection({ x, y, text, defocus }) {
+async function doInjection({ x, y, text, defocus, clickOnly }) {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || 'nut.js not loaded' };
   }
@@ -276,6 +276,7 @@ async function doInjection({ x, y, text, defocus }) {
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
     steps.push('clicked (focus stolen)');
+    if (clickOnly) return { ok: true, steps }; // /defocus: move + click, no Enter
     if (text) {
       // Paste via the clipboard instead of keyboard.type: nut.js drops accented /
       // non-ASCII characters (they go through dead keys). Set the clipboard, send

@@ -24,7 +24,6 @@ import {
   DEFAULTS,
   ALARM_REPEAT_MS,
   TELEGRAM_COMMANDS,
-  TELEGRAM_GLOBAL_COMMANDS,
 } from '../constants.js';
 import {
   DiskPreferencesStore,
@@ -811,7 +810,9 @@ function setTgBadge(connected: boolean): void {
 }
 
 function zoneByName(name: string | null): Zone | null {
-  return name ? (zones.find((z) => z.config.name === name) ?? null) : null;
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  return zones.find((z) => z.config.name.toLowerCase() === lower) ?? null;
 }
 
 function sendStatus(): void {
@@ -829,11 +830,101 @@ function sendStatus(): void {
   tgEnqueue(() => t.sendText(`${header}\n${zoneLines}`));
 }
 
+function sendZoneState(code: string): void {
+  const t = telegram;
+  if (!t) return;
+  const z = zoneByName(code);
+  if (!z) {
+    tgNote(`Unknown zone: ${code}`);
+    return;
+  }
+  if (!capturer || capturer.frameWidth === 0) {
+    tgNote('No capture yet — start monitoring');
+    return;
+  }
+  let frame: PixelFrame;
+  try {
+    frame = capturer.grabRegion(z.config.photoBbox ?? z.config.bbox);
+  } catch {
+    tgNote(`Capture failed: ${code}`);
+    return;
+  }
+  const state = z.config.enabled
+    ? STATE_LABEL[stateKind(z.state, threshold())]
+    : 'OFF';
+  tgEnqueue(() => t.sendPhoto(frame, `${code} · ${state}`));
+}
+
+function sendHelp(): void {
+  const t = telegram;
+  if (!t) return;
+  const lines = [
+    'Commands (/ optional):',
+    'status        zones + state',
+    'start / stop  monitoring',
+    'zones         buttons per zone',
+    'ss <code>     zone state photo',
+    'defocus       click defocus point',
+    'help          this list',
+    '',
+    'z1: text   type into a zone',
+    'z1: enter  press Enter',
+  ];
+  tgEnqueue(() => t.sendText(lines.join('\n')));
+}
+
+function sendZoneButtons(): void {
+  const t = telegram;
+  if (!t) return;
+  const codes = zones.map((z) => z.config.name);
+  if (!codes.length) {
+    tgNote('No zones');
+    return;
+  }
+  tgEnqueue(() => t.sendButtons('Tap a zone for its current state:', codes, 'ss:'));
+}
+
+function runDefocus(): void {
+  if (!defocusPoint) {
+    tgNote('No defocus point set');
+    return;
+  }
+  void window.spike.runInjection({
+    x: defocusPoint.x,
+    y: defocusPoint.y,
+    clickOnly: true,
+  });
+  tgNote('✓ Defocus');
+}
+
 async function handleReply(text: string): Promise<void> {
-  const globalCmd = TELEGRAM_GLOBAL_COMMANDS[text.trim().toLowerCase()];
-  if (globalCmd) {
-    if (globalCmd === 'start') await startMonitoring();
-    else if (globalCmd === 'stop') stopMonitoring();
+  // Commands work with or without a leading "/", normalized (trim + lowercase)
+  // like the "enter" reply word.
+  const norm = text.trim().replace(/^\//, '');
+  const ss = /^ss\b\s*(\S*)/i.exec(norm);
+  if (ss) {
+    if (ss[1]) sendZoneState(ss[1]);
+    else tgNote('Usage: ss <zone>');
+    return;
+  }
+  // 'enter' is excluded here: it's a per-zone reply action handled below, not a
+  // standalone command (a bare "enter" presses Enter on the selected zone).
+  const cmd = TELEGRAM_COMMANDS[norm.toLowerCase()];
+  if (cmd && cmd !== 'enter') {
+    if (cmd === 'help') {
+      sendHelp();
+      return;
+    }
+    if (cmd === 'zones') {
+      sendZoneButtons();
+      return;
+    }
+    if (cmd === 'defocus') {
+      runDefocus();
+      return;
+    }
+    if (cmd === 'start') await startMonitoring();
+    else if (cmd === 'stop') stopMonitoring();
     sendStatus(); // reply with the (possibly updated) state
     return;
   }
@@ -841,15 +932,18 @@ async function handleReply(text: string): Promise<void> {
     text,
     zones.map((z) => z.config.name),
   );
-  const target =
-    zoneByName(zone)?.config.bbox ??
-    zoneByName(selectedZoneName)?.config.bbox ??
-    lastFrozenBbox;
+  const targetZone =
+    zoneByName(zone) ??
+    zoneByName(selectedZoneName) ??
+    (lastFrozenBbox
+      ? (zones.find((z) => bboxEq(z.config.bbox, lastFrozenBbox)) ?? null)
+      : null);
+  const target = targetZone?.config.bbox ?? lastFrozenBbox;
   if (!target || !capturer || capturer.frameWidth === 0) {
     tgEl.textContent = 'Reply ignored: no frozen zone yet';
     return;
   }
-  const tag = zone ? ` → ${zone}` : '';
+  const tag = targetZone ? ` → ${targetZone.config.name}` : '';
   if (TELEGRAM_COMMANDS[message.trim().toLowerCase()] === 'enter') {
     await injectInto(target, '');
     tgEl.textContent = `Enter${tag}`;
@@ -861,12 +955,19 @@ async function handleReply(text: string): Promise<void> {
   }
 }
 
-function onZoneCallback(code: string): string {
-  const z = zoneByName(code);
+function onZoneCallback(data: string): string {
+  // "ss:<code>" (the /zones buttons) returns the zone's state photo; a bare code
+  // (the freeze chooser) sends Enter and pre-selects the zone for a typed reply.
+  if (data.startsWith('ss:')) {
+    const code = data.slice(3);
+    sendZoneState(code);
+    return `${code} · state`;
+  }
+  const z = zoneByName(data);
   if (!z || !capturer || capturer.frameWidth === 0) return 'Unknown zone';
-  selectedZoneName = code;
-  void injectInto(z.config.bbox, '').then(() => tgNote(`✓ Enter → ${code}`));
-  return `Enter → ${code} · reply to type`;
+  selectedZoneName = data;
+  void injectInto(z.config.bbox, '').then(() => tgNote(`✓ Enter → ${data}`));
+  return `Enter → ${data} · reply to type`;
 }
 
 function applyCreds(token: string, chatId: string): void {

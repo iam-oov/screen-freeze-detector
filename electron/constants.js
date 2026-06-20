@@ -8,10 +8,18 @@ module.exports = {
   ALARM_REPEAT_MS: 2000,
   // Alarm beep gain at 100% volume (0..1); the volume slider scales this down.
   ALARM_PEAK_GAIN: 0.9,
-  // Telegram text commands: a reply equal to one of these words (trimmed,
-  // case-insensitive) runs the action instead of being typed. Add more here.
-  TELEGRAM_COMMANDS: { enter: 'enter' }, // "enter" -> simulate the Enter key only
-  // Global Telegram commands: "/status" -> zones summary; "/start"/"/stop" -> same
-  // as the F9/F10 monitoring hotkeys. Each replies with the updated status.
-  TELEGRAM_GLOBAL_COMMANDS: { '/status': 'status', '/start': 'start', '/stop': 'stop' },
+  // Telegram command words: a message equal to one of these (trim + lowercase,
+  // leading "/" optional) runs the action. "enter" is a per-zone reply action
+  // (injects Enter into the target zone); the rest are standalone app commands
+  // (status summary, start/stop monitoring, zones buttons, defocus click, help).
+  // "ss <code>" is handled separately (it takes an argument).
+  TELEGRAM_COMMANDS: {
+    enter: 'enter',
+    status: 'status',
+    start: 'start',
+    stop: 'stop',
+    zones: 'zones',
+    defocus: 'defocus',
+    help: 'help',
+  },
 };

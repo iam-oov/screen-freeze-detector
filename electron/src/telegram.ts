@@ -8,6 +8,21 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Inline-keyboard rows, 4 buttons per row (Telegram allows up to 8). The prefix
+// goes into callback_data so the tap handler can tell button kinds apart (e.g.
+// "ss:z2" requests a state photo, bare "z2" sends Enter).
+export function buttonRows(
+  codes: string[],
+  prefix = "",
+): { text: string; callback_data: string }[][] {
+  const PER_ROW = 4;
+  const rows: { text: string; callback_data: string }[][] = [];
+  for (let i = 0; i < codes.length; i += PER_ROW) {
+    rows.push(codes.slice(i, i + PER_ROW).map((c) => ({ text: c, callback_data: prefix + c })));
+  }
+  return rows;
+}
+
 // Resolve a chat reply to a target zone code. "z2: hi" -> { zone: "z2", message:
 // "hi" } when "z2" is a known code (case-insensitive); otherwise { zone: null,
 // message: text }. Only an exact code prefix routes, so a normal reply that just
@@ -58,31 +73,40 @@ export class TelegramNotifier {
     return Boolean(this.token && this.chatId);
   }
 
-  // One combined freeze message: the zone photo + caption + an inline keyboard
-  // (one button per frozen, telegram-enabled zone). Tapping a button sends Enter
-  // to that zone and pre-selects it for the next typed reply. Single sendPhoto so
-  // the photo and the buttons arrive together instead of as two messages.
-  async sendFrozen(frame: PixelFrame, zoneName: string, codes: string[]): Promise<void> {
+  async sendPhoto(frame: PixelFrame, caption: string, replyMarkup?: object): Promise<void> {
     if (!this.configured()) return;
     try {
       const blob = await pixelFrameToPngBlob(frame);
       const form = new FormData();
       form.append("chat_id", this.chatId);
-      form.append("caption", `Frozen: ${zoneName}`);
+      form.append("caption", caption);
       form.append("photo", blob, "zone.png");
-      if (codes.length) {
-        // 4 buttons per row (Telegram allows up to 8) so the chooser stays compact.
-        const PER_ROW = 4;
-        const rows: { text: string; callback_data: string }[][] = [];
-        for (let i = 0; i < codes.length; i += PER_ROW) {
-          rows.push(codes.slice(i, i + PER_ROW).map((c) => ({ text: c, callback_data: c })));
-        }
-        form.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
-      }
+      if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
       const res = await fetch(`${API}/bot${this.token}/sendPhoto`, { method: "POST", body: form });
-      this.onStatus(res.ok ? `sent (${zoneName})` : `sendPhoto failed: HTTP ${res.status}`);
+      this.onStatus(res.ok ? `sent (${caption})` : `sendPhoto failed: HTTP ${res.status}`);
     } catch (e) {
       this.onStatus("send error: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Combined freeze message: zone photo + caption + a button per frozen,
+  // telegram-enabled zone (tapping one sends Enter to that zone).
+  sendFrozen(frame: PixelFrame, zoneName: string, codes: string[]): Promise<void> {
+    const markup = codes.length ? { inline_keyboard: buttonRows(codes) } : undefined;
+    return this.sendPhoto(frame, `Frozen: ${zoneName}`, markup);
+  }
+
+  // A text message with one inline button per code (callback_data = prefix+code).
+  async sendButtons(text: string, codes: string[], prefix = ""): Promise<void> {
+    if (!this.configured() || !codes.length) return;
+    try {
+      const form = new FormData();
+      form.append("chat_id", this.chatId);
+      form.append("text", text);
+      form.append("reply_markup", JSON.stringify({ inline_keyboard: buttonRows(codes, prefix) }));
+      await fetch(`${API}/bot${this.token}/sendMessage`, { method: "POST", body: form });
+    } catch {
+      /* best effort */
     }
   }
 

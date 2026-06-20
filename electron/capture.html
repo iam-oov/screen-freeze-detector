@@ -78,7 +78,13 @@
       .cfg.collapsed .chevron { transform: rotate(180deg); }
       .cfg.collapsed .cfg-body { display: none; }
       .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; }
-      .cfg-foot { padding: 14px 0 6px; margin-top: 8px; border-top: 1px solid var(--line); }
+      .btn-reset {
+        display: inline-flex; align-items: center; gap: 6px;
+        margin-top: 18px; padding: 5px 0;
+        background: none; border: none; cursor: pointer;
+        color: var(--muted); font-size: 12px; font-weight: 500;
+      }
+      .btn-reset:hover { color: var(--accent); }
       .col { padding: 18px 22px 22px; }
       .col-detect { background: var(--soft); border-right: 1px solid var(--line); }
       .col-label {
@@ -319,6 +325,10 @@
               </div>
               <input type="range" id="volume" min="0" max="1" step="any" value="1" />
             </div>
+            <button id="resetBtn" class="btn-reset" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              Reset to defaults
+            </button>
           </div>
 
           <div class="col col-tg">
@@ -341,7 +351,6 @@
             <div id="tg" class="tg-status muted"></div>
           </div>
         </div>
-        <div class="cfg-foot"><button id="resetBtn" class="btn-outline">Reset to defaults</button></div>
       </div>
     </section>
 
