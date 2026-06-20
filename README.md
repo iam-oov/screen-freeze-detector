@@ -6,13 +6,7 @@ paused or buffering video. On freeze it can beep, auto-press Enter on the zone,
 and act as a Telegram remote control: it sends the zone's image to your phone,
 and your text reply gets typed back into the zone.
 
-It is an **Electron desktop app** (macOS + Linux), living in [`electron/`](electron/).
-An earlier Python/tkinter version was removed once the Electron port reached
-parity (see git history).
-
 ![Screen Freeze Detector](screenshots/app.png)
-
-> _The screenshot shows the earlier UI; the current app uses a light theme._
 
 ## Features
 
@@ -48,9 +42,6 @@ To build an installable **Linux `.deb`** (output in `electron/dist/`):
 ./build_deb.sh   # repo root; version comes from the VERSION file
 sudo apt install electron/dist/screensound-electron_<version>_amd64.deb
 ```
-
-See **[`electron/README.md`](electron/README.md)** for setup details — native
-module build, macOS Screen-Recording / Accessibility permissions, and packaging.
 
 ## Telegram remote control (optional)
 
@@ -90,20 +81,6 @@ code first (`z2 …` or `z2: …`):
 - User preferences auto-save to `~/.config/screensound/settings.json`.
 - The version comes from the `VERSION` file at the repo root (read by
   `electron/main.js`). Bump it by editing `VERSION`.
-
-## Architecture
-
-SOLID — a pure domain with injected adapters (see
-[`electron/src/domain.ts`](electron/src/domain.ts)):
-
-- **Domain** (`domain.ts`): `ZoneConfig`, `ZoneState`, `RMSComparator`,
-  `FreezeMonitor`, `stateKind` — no OS, no Electron, no I/O.
-- **Adapters**: `ScreenCapturer` (getDisplayMedia + canvas), `WebAudioSound`,
-  nut.js input injection (in the main process), `TelegramNotifier` /
-  `TelegramPoller` (fetch), `DiskPreferencesStore` (`prefs.ts`).
-- **Composition root**: the renderer `src/capture-spike.ts` wires everything and
-  drives the UI; `main.js` owns the window, tray, hotkeys, OS input, and the
-  config/preferences files.
 
 ## License
 
