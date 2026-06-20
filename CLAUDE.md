@@ -103,7 +103,7 @@ SOLID. A pure domain with adapters injected by the renderer composition root:
 
 ## Constants
 
-`electron/constants.js`: `HOTKEYS` (F9 start / F10 stop / F8 select), `DEFAULTS`
+`electron/constants.js`: `HOTKEYS` (F10 toggle monitoring), `DEFAULTS`
 (threshold, intervalMs, consec), `ALARM_REPEAT_MS`, `ALARM_PEAK_GAIN`, `TELEGRAM_COMMANDS`
 (per-zone reply words, e.g. `enter`), `TELEGRAM_GLOBAL_COMMANDS` (`/status`, `/start`,
 `/stop`). Sound waveform params live in `src/sound.ts`; theme colors in `capture.html` CSS.

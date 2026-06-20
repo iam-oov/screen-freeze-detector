@@ -27,8 +27,8 @@ parity (see git history).
   than the one being watched for freezes
 - Telegram remote control: zone image on freeze, tap-to-target buttons, typed
   replies, and `/status` · `/start` · `/stop` commands
-- Preferences (zones, settings, defocus point) auto-save and restore on launch
-- Global hotkeys: **F9** start · **F10** stop · **F8** select zones
+- Preferences (zones, settings) auto-save and restore on launch
+- Global hotkey: **F10** toggle monitoring (select zones via the button)
 - System tray, reset-to-defaults, global notification volume
 
 ## Run

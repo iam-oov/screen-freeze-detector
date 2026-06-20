@@ -64,7 +64,7 @@ try {
   nutError = err.message;
 }
 
-// A system tray for the app. Start/Stop reuse the same "hotkey" IPC as the keys.
+// A system tray for the app. Toggle reuses the same "hotkey" IPC as the keys.
 let tray = null;
 let mainWin = null;
 
@@ -78,12 +78,8 @@ function createTray(win) {
       { label: 'Show', click: () => (win.show(), win.focus()) },
       { type: 'separator' },
       {
-        label: `Start monitoring (${HOTKEYS.start})`,
-        click: () => win.webContents.send('hotkey', 'start'),
-      },
-      {
-        label: `Stop monitoring (${HOTKEYS.stop})`,
-        click: () => win.webContents.send('hotkey', 'stop'),
+        label: `Toggle monitoring (${HOTKEYS.toggle})`,
+        click: () => win.webContents.send('hotkey', 'toggle'),
       },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
@@ -109,15 +105,9 @@ function createWindow() {
   });
   mainWin.loadFile(path.join(__dirname, 'capture.html'));
 
-  // Global hotkeys (see constants.js).
-  globalShortcut.register(HOTKEYS.start, () =>
-    mainWin.webContents.send('hotkey', 'start'),
-  );
-  globalShortcut.register(HOTKEYS.stop, () =>
-    mainWin.webContents.send('hotkey', 'stop'),
-  );
-  globalShortcut.register(HOTKEYS.select, () =>
-    mainWin.webContents.send('hotkey', 'select'),
+  // Global hotkey (see constants.js).
+  globalShortcut.register(HOTKEYS.toggle, () =>
+    mainWin.webContents.send('hotkey', 'toggle'),
   );
   createTray(mainWin);
   // Closing the window quits the app (window-all-closed -> app.quit()). The tray

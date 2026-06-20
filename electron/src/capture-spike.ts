@@ -607,8 +607,8 @@ function tick(): void {
 function setRunning(on: boolean): void {
   running = on;
   toggleBtn.innerHTML = on
-    ? `${SVG_STOP}<span>Stop · ${HOTKEYS.stop}</span>`
-    : `${SVG_PLAY}<span>Start · ${HOTKEYS.start}</span>`;
+    ? `${SVG_STOP}<span>Stop · ${HOTKEYS.toggle}</span>`
+    : `${SVG_PLAY}<span>Start · ${HOTKEYS.toggle}</span>`;
   toggleBtn.classList.toggle('is-stopped', !on);
   runBadge.className = `badge ${on ? 'badge-ok' : 'badge-idle'}`;
   runBadge.innerHTML = `<span class="dot"></span> ${on ? 'Running' : 'Stopped'}`;
@@ -650,13 +650,14 @@ toggleBtn.addEventListener('click', () =>
   running ? stopMonitoring() : void startMonitoring(),
 );
 window.spike.onHotkey((which: string) => {
-  if (which === 'start') void startMonitoring();
-  else if (which === 'stop') stopMonitoring();
-  else if (which === 'select') selectZones();
+  if (which === 'toggle') {
+    if (running) stopMonitoring();
+    else void startMonitoring();
+  }
 });
 
 // --- overlay-driven zone selection ----------------------------------------
-let overlayBusy = false; // guards against stacking overlays (e.g. F8 spam)
+let overlayBusy = false; // guards against stacking overlays (e.g. rapid clicks)
 
 async function withScreenshot<T>(
   use: (shot: {
@@ -993,7 +994,7 @@ window.spike
     tgChat.value = chatId;
     applyCreds(token, chatId);
   });
-selectLbl.textContent = `Select zones · ${HOTKEYS.select}`;
+selectLbl.textContent = 'Select zones';
 thresholdEl.value = String(DEFAULT_THRESHOLD);
 intervalEl.value = String(DEFAULT_INTERVAL_MS);
 consecEl.value = String(DEFAULT_CONSEC);

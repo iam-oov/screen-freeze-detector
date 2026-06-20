@@ -1,6 +1,6 @@
 module.exports = {
-  // Global hotkeys: start/stop monitoring + open the zone selector.
-  HOTKEYS: { start: 'F9', stop: 'F10', select: 'F8' },
+  // Global hotkey: toggle monitoring (zone selection is button-only).
+  HOTKEYS: { toggle: 'F10' },
   // Detection defaults; the sliders/stepper override these live.
   DEFAULTS: { threshold: 0.997, intervalMs: 5000, consec: 4 },
   // Freeze alarm: how often the beep repeats while a zone stays frozen (ms).
