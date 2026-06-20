@@ -526,6 +526,13 @@ function interruptZone(bbox: Bbox): Promise<unknown> {
   return window.spike.runInjection({ x: p.x, y: p.y, ctrlC: true });
 }
 
+// Click the zone's center to give the window under it input focus (no Enter).
+function focusZone(bbox: Bbox): Promise<unknown> {
+  const p = zoneScreenPoint(bbox);
+  if (!p) return Promise.resolve();
+  return window.spike.runInjection({ x: p.x, y: p.y, clickOnly: true });
+}
+
 const injector = {
   inject(bbox?: Bbox): void {
     if (bbox) void injectInto(bbox, '');
@@ -798,7 +805,7 @@ function sendStatus(): void {
   tgEnqueue(() => t.sendText(`${header}\n${zoneLines}`));
 }
 
-function sendZoneState(code: string): void {
+async function sendZoneState(code: string): Promise<void> {
   const t = telegram;
   if (!t) return;
   const z = zoneByName(code);
@@ -806,8 +813,16 @@ function sendZoneState(code: string): void {
     tgNote(`Unknown zone: ${code}`);
     return;
   }
+  // Establish capture on demand so remote queries work without monitoring
+  // running (getDisplayMedia is auto-granted via setDisplayMediaRequestHandler).
+  try {
+    await ensureCapture();
+  } catch (e) {
+    tgNote('Capture failed: ' + (e instanceof Error ? e.message : String(e)));
+    return;
+  }
   if (!capturer || capturer.frameWidth === 0) {
-    tgNote('No capture yet — start monitoring');
+    tgNote('No capture yet — try again');
     return;
   }
   let frame: PixelFrame;
@@ -920,7 +935,9 @@ async function handleReply(text: string): Promise<void> {
       : null);
   const target = targetZone?.config.bbox ?? lastFrozenBbox;
   if (!target || !capturer || capturer.frameWidth === 0) {
-    tgEl.textContent = 'Reply ignored: no frozen zone yet';
+    const msg = 'No target zone — tap a zone first, or reply "z2: <text>"';
+    tgEl.textContent = msg;
+    tgNote(msg);
     return;
   }
   const tag = targetZone ? ` → ${targetZone.config.name}` : '';
@@ -937,12 +954,15 @@ async function handleReply(text: string): Promise<void> {
 }
 
 function onZoneCallback(data: string): string {
-  // "ss:<code>" (the /zones buttons) returns the zone's state photo; a bare code
-  // (the freeze chooser) sends Enter and pre-selects the zone for a typed reply.
+  // "ss:<code>" (the /zones buttons) sends the zone's state photo and clicks the
+  // zone to focus it; a bare code (the freeze chooser) sends Enter + pre-selects.
   if (data.startsWith('ss:')) {
     const code = data.slice(3);
-    sendZoneState(code);
-    return `${code} · state`;
+    const z = zoneByName(code);
+    if (!z) return 'Unknown zone';
+    selectedZoneName = code; // a following typed reply targets this zone
+    void sendZoneState(code).then(() => focusZone(z.config.bbox));
+    return `${code} · sent + focus`;
   }
   const z = zoneByName(data);
   if (!z || !capturer || capturer.frameWidth === 0) return 'Unknown zone';

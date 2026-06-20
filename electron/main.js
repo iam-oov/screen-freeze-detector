@@ -254,7 +254,7 @@ ipcMain.handle('set-window-visible', (_e, visible) => {
 });
 
 // Move to the target point -> click (steal focus) -> paste text -> Enter.
-async function doInjection({ x, y, text, ctrlC }) {
+async function doInjection({ x, y, text, ctrlC, clickOnly }) {
   if (!nut) {
     return { ok: false, steps: [], error: nutError || 'nut.js not loaded' };
   }
@@ -265,6 +265,7 @@ async function doInjection({ x, y, text, ctrlC }) {
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
     steps.push('clicked (focus stolen)');
+    if (clickOnly) return { ok: true, steps }; // focus a zone: click only, no Enter
     if (ctrlC) {
       // Ctrl+C = SIGINT in a terminal on both Linux and macOS (not Cmd+C).
       await keyboard.pressKey(Key.LeftControl, Key.C);
