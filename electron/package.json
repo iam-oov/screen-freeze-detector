@@ -1,19 +1,22 @@
 {
   "name": "screensound-electron",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "screensound (Electron): monitors screen zones and reacts when they freeze — sound alert, synthetic Enter via nut.js, and a Telegram remote.",
+  "homepage": "https://github.com/iam-oov/screen-freeze-detector",
+  "author": "osvaldo hinojosa <osvaldo@tiriel.ai>",
   "main": "main.js",
   "scripts": {
     "start": "pnpm build:renderer && electron . --no-sandbox",
     "test": "node --test \"src/**/*.test.ts\"",
     "build:renderer": "esbuild src/capture-spike.ts src/overlay.ts --bundle --format=iife --outdir=.",
     "pack": "pnpm build:renderer && electron-builder --mac --dir",
-    "dist": "pnpm build:renderer && electron-builder --mac"
+    "dist": "pnpm build:renderer && electron-builder --mac",
+    "dist:linux": "pnpm build:renderer && electron-builder --linux deb -c.extraMetadata.version=$(cat ../VERSION)"
   },
   "build": {
     "appId": "ai.tiriel.screensound",
-    "productName": "screensound",
+    "productName": "Screen Sound",
     "directories": { "output": "dist", "buildResources": "assets" },
     "files": ["**/*", "!**/*.ts", "!.env", "!README.md", "!assets/**/*"],
     "asarUnpack": ["**/*.node", "node_modules/@nut-tree-fork/**"],
@@ -22,6 +25,14 @@
       "category": "public.app-category.utilities",
       "icon": "assets/icon.png",
       "identity": null
+    },
+    "linux": {
+      "target": ["deb"],
+      "category": "Utility",
+      "icon": "assets/icon.png",
+      "maintainer": "osvaldo hinojosa <osvaldo@tiriel.ai>",
+      "executableName": "screensound",
+      "executableArgs": ["--no-sandbox"]
     }
   },
   "devDependencies": {

@@ -26,7 +26,8 @@ parity (see git history).
 - Independent Telegram **capture zone** per zone — photograph a different area
   than the one being watched for freezes
 - Telegram remote control: zone image on freeze, tap-to-target buttons, typed
-  replies, and `/status` · `/start` · `/stop` commands
+  replies, per-zone key actions (Enter / Ctrl+C / Arrow Up·Down), and app
+  commands (status, start, stop, zones, ss, defocus, help)
 - Preferences (zones, settings) auto-save and restore on launch
 - Global hotkey: **F10** toggle monitoring (select zones via the button)
 - System tray, reset-to-defaults, global notification volume
@@ -39,6 +40,13 @@ The app lives in `electron/`:
 cd electron
 pnpm install
 pnpm start
+```
+
+To build an installable **Linux `.deb`** (output in `electron/dist/`):
+
+```bash
+./build_deb.sh   # repo root; version comes from the VERSION file
+sudo apt install electron/dist/screensound-electron_<version>_amd64.deb
 ```
 
 See **[`electron/README.md`](electron/README.md)** for setup details — native
@@ -57,6 +65,20 @@ it into the target zone (+ Enter). Setup:
 
 The poller only obeys messages from your configured `chat_id`; it uses
 long-polling (no public URL) and skips old messages on start.
+
+### Commands
+
+Send these to the bot — the leading `/` is optional. Zone actions need the zone
+code first (`z2 …` or `z2: …`):
+
+- `status` — zones + monitoring summary; `start` / `stop` — toggle monitoring
+- `zones` — a button per zone (tap → its state photo, and focus that zone)
+- `ss <code>` — that zone's current state photo
+- `defocus` — bring the app to front (drop input focus off a zone)
+- `help` — command list
+- `z2: <text>` — type text into z2 (+ Enter); `enter` — press Enter (`z2 enter`,
+  or the selected/last zone)
+- `z2 ctrlc` — Ctrl+C; `z2 up [n]` / `z2 down [n]` — arrow key, n times (max 5)
 
 ## Configuration
 
