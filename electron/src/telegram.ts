@@ -47,6 +47,21 @@ export function parseCtrlc(text: string): string | null {
   return m ? m[1] : null;
 }
 
+// "<code> up" / "<code>: up [n]" -> { zone, count } (count defaults to 1). Like
+// parseCtrlc, an explicit zone is required (a bare "up" -> null).
+export function parseUp(text: string): { zone: string; count: number } | null {
+  const m = text.trim().match(/^([^\s:]+)[:\s]\s*up(?:\s+(\d+))?$/i);
+  if (!m) return null;
+  return { zone: m[1], count: m[2] ? parseInt(m[2], 10) : 1 };
+}
+
+// "<code> enter" / "<code>: enter" -> the zone code. A bare "enter" -> null; it
+// stays handled as the selected/last-zone reply word (see TELEGRAM_COMMANDS).
+export function parseEnter(text: string): string | null {
+  const m = text.trim().match(/^([^\s:]+)[:\s]\s*enter$/i);
+  return m ? m[1] : null;
+}
+
 // Encode a captured RGBA frame to a PNG Blob via canvas (Telegram sendPhoto
 // wants a file upload).
 export function pixelFrameToPngBlob(frame: PixelFrame): Promise<Blob> {

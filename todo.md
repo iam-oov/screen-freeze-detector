@@ -1,1 +1,1 @@
-2. se puede enviar el comando ctrl+c para interrumpir el proceso de una terminal ?
+1. quiero agrega la funcionadad "up" para mandar la tecla "flecha arriba" a una zona. Lo nuevo es que quiero hacer esta accion que se repita X veces. Por ejemplo: si envio "up 4", la acción de enviar la tecla "flecha arriba" se repetirá 4 veces. Si envio "up" solo se enviará una vez.

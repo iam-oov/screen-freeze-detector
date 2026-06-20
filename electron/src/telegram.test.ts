@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseZoneReply, buttonRows, parseCtrlc } from "./telegram.ts";
+import { parseZoneReply, buttonRows, parseCtrlc, parseUp, parseEnter } from "./telegram.ts";
 
 const CODES = ["z1", "z2", "z3"];
 
@@ -72,4 +72,40 @@ test("parseCtrlc: bare ctrlc -> null (requires an explicit zone)", () => {
 
 test("parseCtrlc: trailing ctrlc inside a longer message -> null", () => {
   assert.equal(parseCtrlc("z2: type ctrlc please"), null);
+});
+
+test("parseUp: zone + count (space form)", () => {
+  assert.deepEqual(parseUp("z2 up 4"), { zone: "z2", count: 4 });
+});
+
+test("parseUp: zone + count (colon form)", () => {
+  assert.deepEqual(parseUp("z2: up 3"), { zone: "z2", count: 3 });
+});
+
+test("parseUp: no count defaults to 1", () => {
+  assert.deepEqual(parseUp("z2 up"), { zone: "z2", count: 1 });
+});
+
+test("parseUp: bare up (no zone) -> null", () => {
+  assert.equal(parseUp("up 4"), null);
+});
+
+test("parseUp: extra words -> null", () => {
+  assert.equal(parseUp("z2 up now"), null);
+});
+
+test("parseEnter: zone (space form)", () => {
+  assert.equal(parseEnter("z2 enter"), "z2");
+});
+
+test("parseEnter: zone (colon form)", () => {
+  assert.equal(parseEnter("z2: enter"), "z2");
+});
+
+test("parseEnter: bare enter -> null (stays the selected-zone reply word)", () => {
+  assert.equal(parseEnter("enter"), null);
+});
+
+test("parseEnter: extra words -> null", () => {
+  assert.equal(parseEnter("z2 enter now"), null);
 });

@@ -19,12 +19,15 @@ import {
   TelegramPoller,
   parseZoneReply,
   parseCtrlc,
+  parseUp,
+  parseEnter,
 } from './telegram.ts';
 import {
   HOTKEYS,
   DEFAULTS,
   ALARM_REPEAT_MS,
   TELEGRAM_COMMANDS,
+  UP_REPEAT_MAX,
 } from '../constants.js';
 import {
   DiskPreferencesStore,
@@ -533,6 +536,40 @@ function focusZone(bbox: Bbox): Promise<unknown> {
   return window.spike.runInjection({ x: p.x, y: p.y, clickOnly: true });
 }
 
+function sendArrowUp(bbox: Bbox, count: number): Promise<unknown> {
+  const p = zoneScreenPoint(bbox);
+  if (!p) return Promise.resolve();
+  return window.spike.runInjection({ x: p.x, y: p.y, arrowUp: count });
+}
+
+// Run a zone-prefixed Telegram command: resolve the zone, ensure capture, do the
+// action, and report to the UI + chat. Shared by ctrlc / up / enter.
+async function runZoneAction(
+  code: string,
+  name: string,
+  action: (bbox: Bbox) => Promise<unknown>,
+): Promise<void> {
+  const z = zoneByName(code);
+  if (!z) {
+    tgNote(`Unknown zone: ${code}`);
+    return;
+  }
+  try {
+    await ensureCapture();
+  } catch (e) {
+    tgNote('Capture failed: ' + (e instanceof Error ? e.message : String(e)));
+    return;
+  }
+  if (!capturer || capturer.frameWidth === 0) {
+    tgNote('No capture yet — try again');
+    return;
+  }
+  await action(z.config.bbox);
+  const label = `${name} → ${z.config.name}`;
+  tgEl.textContent = label;
+  tgNote(`✓ ${label}`);
+}
+
 const injector = {
   inject(bbox?: Bbox): void {
     if (bbox) void injectInto(bbox, '');
@@ -853,6 +890,7 @@ function sendHelp(): void {
     'z1: text   type into a zone',
     'z1: enter  press Enter',
     'z1: ctrlc  send Ctrl+C',
+    'z1: up [n] Arrow Up (n times)',
   ];
   tgEnqueue(() => t.sendText(lines.join('\n')));
 }
@@ -908,19 +946,22 @@ async function handleReply(text: string): Promise<void> {
     sendStatus(); // reply with the (possibly updated) state
     return;
   }
-  // Ctrl+C is destructive: require an explicit zone ("z2 ctrlc" or "z2: ctrlc").
-  // A bare "ctrlc" never interrupts.
+  // Zone-prefixed action commands ("z2 up" / "z2: up") — require an explicit zone.
+  // (A bare "enter" stays handled below as the selected/last-zone reply word.)
   const ctrlcZone = parseCtrlc(norm);
   if (ctrlcZone) {
-    const z = zoneByName(ctrlcZone);
-    if (!z) tgNote(`Unknown zone: ${ctrlcZone}`);
-    else if (!capturer || capturer.frameWidth === 0)
-      tgNote('Reply ignored: no capture yet');
-    else {
-      await interruptZone(z.config.bbox);
-      tgEl.textContent = `Ctrl+C → ${z.config.name}`;
-      tgNote(`✓ Ctrl+C → ${z.config.name}`);
-    }
+    await runZoneAction(ctrlcZone, 'Ctrl+C', interruptZone);
+    return;
+  }
+  const up = parseUp(norm);
+  if (up) {
+    const n = Math.min(Math.max(up.count, 1), UP_REPEAT_MAX);
+    await runZoneAction(up.zone, `Up ×${n}`, (bbox) => sendArrowUp(bbox, n));
+    return;
+  }
+  const enterZone = parseEnter(norm);
+  if (enterZone) {
+    await runZoneAction(enterZone, 'Enter', (bbox) => injectInto(bbox, ''));
     return;
   }
   const { zone, message } = parseZoneReply(
