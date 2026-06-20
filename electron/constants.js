@@ -8,8 +8,8 @@ module.exports = {
   ALARM_REPEAT_MS: 2000,
   // Alarm beep gain at 100% volume (0..1); the volume slider scales this down.
   ALARM_PEAK_GAIN: 0.9,
-  // Max repeats for the Telegram "up" command (e.g. "z2 up 4"); higher clamps.
-  UP_REPEAT_MAX: 5,
+  // Max repeats for the Telegram arrow commands ("z2 up 4" / "z2 down 4"); clamps.
+  ARROW_REPEAT_MAX: 5,
   // Telegram command words: a message equal to one of these (trim + lowercase,
   // leading "/" optional) runs the action. "enter" is a per-zone reply action
   // (injects Enter into the target zone); the rest are standalone app commands

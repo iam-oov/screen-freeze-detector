@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseZoneReply, buttonRows, parseCtrlc, parseUp, parseEnter } from "./telegram.ts";
+import { parseZoneReply, buttonRows, parseCtrlc, parseUp, parseDown, parseEnter } from "./telegram.ts";
 
 const CODES = ["z1", "z2", "z3"];
 
@@ -92,6 +92,22 @@ test("parseUp: bare up (no zone) -> null", () => {
 
 test("parseUp: extra words -> null", () => {
   assert.equal(parseUp("z2 up now"), null);
+});
+
+test("parseDown: zone + count (space form)", () => {
+  assert.deepEqual(parseDown("z2 down 3"), { zone: "z2", count: 3 });
+});
+
+test("parseDown: colon form, no count defaults to 1", () => {
+  assert.deepEqual(parseDown("z2: down"), { zone: "z2", count: 1 });
+});
+
+test("parseDown: bare down (no zone) -> null", () => {
+  assert.equal(parseDown("down 2"), null);
+});
+
+test("parseDown: 'up' is not matched by parseDown", () => {
+  assert.equal(parseDown("z2 up"), null);
 });
 
 test("parseEnter: zone (space form)", () => {

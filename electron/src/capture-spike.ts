@@ -20,6 +20,7 @@ import {
   parseZoneReply,
   parseCtrlc,
   parseUp,
+  parseDown,
   parseEnter,
 } from './telegram.ts';
 import {
@@ -27,7 +28,7 @@ import {
   DEFAULTS,
   ALARM_REPEAT_MS,
   TELEGRAM_COMMANDS,
-  UP_REPEAT_MAX,
+  ARROW_REPEAT_MAX,
 } from '../constants.js';
 import {
   DiskPreferencesStore,
@@ -536,10 +537,17 @@ function focusZone(bbox: Bbox): Promise<unknown> {
   return window.spike.runInjection({ x: p.x, y: p.y, clickOnly: true });
 }
 
-function sendArrowUp(bbox: Bbox, count: number): Promise<unknown> {
+function sendArrow(
+  bbox: Bbox,
+  key: 'up' | 'down',
+  count: number,
+): Promise<unknown> {
   const p = zoneScreenPoint(bbox);
   if (!p) return Promise.resolve();
-  return window.spike.runInjection({ x: p.x, y: p.y, arrowUp: count });
+  // Drop focus off the zone afterward (like a typed reply) so it can re-freeze.
+  return window.spike
+    .runInjection({ x: p.x, y: p.y, arrowKey: key, arrowCount: count })
+    .then(() => window.spike.focusApp());
 }
 
 // Run a zone-prefixed Telegram command: resolve the zone, ensure capture, do the
@@ -891,6 +899,7 @@ function sendHelp(): void {
     'z1: enter  press Enter',
     'z1: ctrlc  send Ctrl+C',
     'z1: up [n] Arrow Up (n times)',
+    'z1: down [n] Arrow Down (n times)',
   ];
   tgEnqueue(() => t.sendText(lines.join('\n')));
 }
@@ -955,8 +964,14 @@ async function handleReply(text: string): Promise<void> {
   }
   const up = parseUp(norm);
   if (up) {
-    const n = Math.min(Math.max(up.count, 1), UP_REPEAT_MAX);
-    await runZoneAction(up.zone, `Up ×${n}`, (bbox) => sendArrowUp(bbox, n));
+    const n = Math.min(Math.max(up.count, 1), ARROW_REPEAT_MAX);
+    await runZoneAction(up.zone, `Up ×${n}`, (bbox) => sendArrow(bbox, 'up', n));
+    return;
+  }
+  const down = parseDown(norm);
+  if (down) {
+    const n = Math.min(Math.max(down.count, 1), ARROW_REPEAT_MAX);
+    await runZoneAction(down.zone, `Down ×${n}`, (bbox) => sendArrow(bbox, 'down', n));
     return;
   }
   const enterZone = parseEnter(norm);

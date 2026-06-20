@@ -49,11 +49,21 @@ export function parseCtrlc(text: string): string | null {
 
 // "<code> up" / "<code>: up [n]" -> { zone, count } (count defaults to 1). Like
 // parseCtrlc, an explicit zone is required (a bare "up" -> null).
-export function parseUp(text: string): { zone: string; count: number } | null {
-  const m = text.trim().match(/^([^\s:]+)[:\s]\s*up(?:\s+(\d+))?$/i);
+function parseArrow(
+  text: string,
+  key: string,
+): { zone: string; count: number } | null {
+  const m = text
+    .trim()
+    .match(new RegExp(`^([^\\s:]+)[:\\s]\\s*${key}(?:\\s+(\\d+))?$`, "i"));
   if (!m) return null;
   return { zone: m[1], count: m[2] ? parseInt(m[2], 10) : 1 };
 }
+
+// "<code> up [n]" / "<code> down [n]" (also with ":") -> { zone, count } (count
+// defaults to 1). Require an explicit zone; a bare "up"/"down" -> null.
+export const parseUp = (text: string) => parseArrow(text, "up");
+export const parseDown = (text: string) => parseArrow(text, "down");
 
 // "<code> enter" / "<code>: enter" -> the zone code. A bare "enter" -> null; it
 // stays handled as the selected/last-zone reply word (see TELEGRAM_COMMANDS).
