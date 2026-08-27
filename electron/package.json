@@ -17,9 +17,21 @@
   "build": {
     "appId": "ai.tiriel.screensound",
     "productName": "Screen Sound",
-    "directories": { "output": "dist", "buildResources": "assets" },
-    "files": ["**/*", "!**/*.ts", "!.env", "!README.md", "!assets/**/*"],
-    "asarUnpack": ["**/*.node", "node_modules/@nut-tree-fork/**"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "**/*",
+      "!**/*.ts",
+      "!.env",
+      "!README.md",
+      "!assets/**/*"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/@nut-tree-fork/**"
+    ],
     "mac": {
       "target": "dmg",
       "category": "public.app-category.utilities",
@@ -27,16 +39,20 @@
       "identity": null
     },
     "linux": {
-      "target": ["deb"],
+      "target": [
+        "deb"
+      ],
       "category": "Utility",
       "icon": "assets/icon.png",
       "maintainer": "osvaldo hinojosa <osvaldo@tiriel.ai>",
       "executableName": "screensound",
-      "executableArgs": ["--no-sandbox"]
+      "executableArgs": [
+        "--no-sandbox"
+      ]
     }
   },
   "devDependencies": {
-    "electron": "^31.3.1",
+    "electron": "^43.2.0",
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0"
   },
@@ -44,6 +60,10 @@
     "@nut-tree-fork/nut-js": "^4.2.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "@nut-tree-fork/libnut", "esbuild"]
+    "onlyBuiltDependencies": [
+      "electron",
+      "@nut-tree-fork/libnut",
+      "esbuild"
+    ]
   }
 }

@@ -353,6 +353,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/></svg>
             Show zones
           </button>
+          <button id="screensBtn" class="btn-outline" title="Re-pick which monitor is which stream">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Screens
+          </button>
         </div>
       </div>
       <div class="ztable">
@@ -372,13 +376,6 @@
       </span>
     </footer>
 
-    <video
-      id="video"
-      autoplay
-      muted
-      playsinline
-      style="position: fixed; left: -10000px; top: 0; width: 320px; height: 200px; opacity: 0; pointer-events: none"
-    ></video>
     <script src="capture-spike.js"></script>
   </body>
 </html>

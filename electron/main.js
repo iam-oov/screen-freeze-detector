@@ -67,6 +67,9 @@ try {
 // A system tray for the app. Toggle reuses the same "hotkey" IPC as the keys.
 let tray = null;
 let mainWin = null;
+// Set by 'next-capture-display' right before a getDisplayMedia() call, so the
+// display-media handler below knows which display's source to hand back.
+let pendingCaptureDisplayId = null;
 
 function createTray(win) {
   tray = new Tray(
@@ -118,19 +121,15 @@ function createWindow() {
 // hands us a screenshot (a dataURL from the SAME getDisplayMedia frame it samples
 // during monitoring, so the bbox coordinate space matches). Resolves with the
 // overlay's result, or null if cancelled/closed.
-function openOverlay({
-  mode,
-  dataURL,
-  frameW,
-  frameH,
-  zones,
-  names,
-  captures,
-  detection,
-  current,
-}) {
+function openOverlay(params) {
   return new Promise((resolve) => {
-    const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
+    const { frameX, frameY, frameW, frameH } = params;
+    const hasFrame = [frameX, frameY, frameW, frameH].every(
+      (v) => typeof v === 'number',
+    );
+    const { x, y, width, height } = hasFrame
+      ? { x: frameX, y: frameY, width: frameW, height: frameH }
+      : screen.getPrimaryDisplay().bounds;
     const overlay = new BrowserWindow({
       x,
       y,
@@ -146,20 +145,14 @@ function openOverlay({
       webPreferences: { preload: path.join(__dirname, 'preload.js') },
     });
     overlay.setAlwaysOnTop(true, 'screen-saver');
-    if (process.platform === 'darwin') overlay.setSimpleFullScreen(true);
+    // Full-desktop overlays already span every monitor as one window; the
+    // macOS Spaces fullscreen animation only makes sense for a single display.
+    if (process.platform === 'darwin' && screen.getAllDisplays().length === 1) {
+      overlay.setSimpleFullScreen(true);
+    }
     overlay.loadFile(path.join(__dirname, 'overlay.html'));
     overlay.webContents.once('did-finish-load', () => {
-      overlay.webContents.send('overlay-init', {
-        mode,
-        dataURL,
-        frameW,
-        frameH,
-        zones,
-        names,
-        captures,
-        detection,
-        current,
-      });
+      overlay.webContents.send('overlay-init', params);
     });
 
     let settled = false;
@@ -177,12 +170,23 @@ function openOverlay({
 }
 
 app.whenReady().then(() => {
-  // Auto-select the screen so getDisplayMedia() resolves without a source picker.
-  // macOS still gates the first capture behind the Screen Recording prompt.
+  // Grants the source requested via 'next-capture-display' (matched by
+  // display_id) so each getDisplayMedia() call picks up the right monitor's
+  // stream. On Wayland every source reports display_id "" (the portal decides
+  // instead), so the match always misses and this falls back to sources[0] —
+  // the one stream the GNOME portal dialog just granted. Renderer serializes
+  // acquisition, so there is no race on pendingCaptureDisplayId.
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      callback(sources.length ? { video: sources[0] } : {});
-    });
+    desktopCapturer
+      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => {
+        if (!sources.length) return callback({});
+        const want =
+          pendingCaptureDisplayId != null ? String(pendingCaptureDisplayId) : null;
+        pendingCaptureDisplayId = null;
+        const match = want ? sources.find((s) => s.display_id === want) : null;
+        callback({ video: match || sources[0] });
+      });
   });
   createWindow();
 });
@@ -243,6 +247,44 @@ ipcMain.handle('get-version', () => {
 
 ipcMain.handle('open-overlay', (_e, params) => openOverlay(params));
 
+// Displays, left-to-right (prompt order — the only stream->display mapping
+// Wayland allows). needsPicker: true unless every display already has a
+// matching desktopCapturer source (real per-display sources, e.g. macOS/X11);
+// on Wayland getSources() returns one placeholder with display_id "", so
+// needsPicker is always true there and the renderer prompts before each pick.
+ipcMain.handle('get-displays', async () => {
+  const displays = screen.getAllDisplays().slice().sort((a, b) => a.bounds.x - b.bounds.x);
+  const primaryId = screen.getPrimaryDisplay().id;
+  // On Wayland every desktopCapturer.getSources call opens its own portal
+  // dialog (since Electron 43; it was silent on 31), so never call it just to
+  // probe display_id mapping — the portal implies the user picks anyway.
+  const wayland = process.platform === 'linux' && !!process.env.WAYLAND_DISPLAY;
+  const matched = wayland
+    ? 0
+    : (
+        await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 0, height: 0 },
+        })
+      ).filter((s) => displays.some((d) => s.display_id === String(d.id))).length;
+  return {
+    displays: displays.map((d) => ({
+      id: d.id,
+      label: d.label,
+      primary: d.id === primaryId,
+      x: d.bounds.x,
+      y: d.bounds.y,
+      width: d.bounds.width,
+      height: d.bounds.height,
+    })),
+    needsPicker: matched < displays.length,
+  };
+});
+
+ipcMain.handle('next-capture-display', (_e, id) => {
+  pendingCaptureDisplayId = id;
+});
+
 ipcMain.handle('set-window-visible', (_e, visible) => {
   if (!mainWin) return;
   if (visible) {
@@ -260,7 +302,14 @@ async function doInjection({ x, y, text, ctrlC, clickOnly, arrowKey, arrowCount 
   }
   const { mouse, keyboard, Point, Button, Key } = nut;
   const steps = [];
+  // Injection warps the pointer to the zone (possibly on another monitor);
+  // keyboard events follow focus, not the pointer, so it's safe to put the
+  // pointer back where the user had it once the sequence ends.
+  let pointerBefore = null;
   try {
+    pointerBefore = await mouse.getPosition();
+    // x/y are virtual DIP coords (bboxCenter output); X11 with scaleFactor !=
+    // 1 would need physical px here instead — not the case on this rig.
     await mouse.setPosition(new Point(x, y));
     steps.push(`moved mouse to (${x}, ${y})`);
     await mouse.click(Button.LEFT);
@@ -308,6 +357,12 @@ async function doInjection({ x, y, text, ctrlC, clickOnly, arrowKey, arrowCount 
       steps,
       error: String(err && err.message ? err.message : err),
     };
+  } finally {
+    if (pointerBefore) {
+      try {
+        await mouse.setPosition(pointerBefore);
+      } catch {}
+    }
   }
 }
 

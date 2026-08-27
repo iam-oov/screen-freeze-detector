@@ -15,15 +15,19 @@ The app lives entirely in `electron/`.
 
 ## Tech stack
 
-- Electron 31, TypeScript, `pnpm`
+- Electron 43, TypeScript, `pnpm` (Electron 43+ required on Linux: Electron 31's
+  Chromium hit a fatal glibc 2.43 assertion when capturing certain monitors through the
+  Wayland portal)
 - **esbuild** bundles the renderer (`src/capture-spike.ts`, `src/overlay.ts`) to IIFE
   `.js` next to the HTML. There is **no `tsc`**: types are stripped, never type-checked —
   type errors do NOT fail the build (or the tests).
 - `@nut-tree-fork/nut-js` for OS-level synthetic input (click-to-focus, then type+Enter,
   Ctrl+C, or Arrow Up/Down) the main process owns; Chromium's `sendInputEvent` only reaches
   our own windows.
-- Screen capture via `getDisplayMedia` → a hidden `<video>` → an offscreen canvas (the
-  Electron equivalent of the old `scrot`).
+- Screen capture treats every monitor as one virtual desktop: `getDisplayMedia` → one
+  hidden `<video>` per display → an offscreen canvas the compositor resizes to each
+  requested bbox and fills by drawing the intersecting slice of every live display
+  (the Electron equivalent of the old `scrot`, generalised past a single screen).
 - Web Audio for the alert sound (oscillator beeps; no audio files).
 - Telegram Bot API over `fetch` + `FormData`, directly from the renderer.
 - `node --test` runs the assert-based `src/*.test.ts` checks (Node type-stripping).
@@ -65,12 +69,18 @@ SOLID. A pure domain with adapters injected by the renderer composition root:
 
 - **Domain** (`src/domain.ts`, no OS / Electron / I/O): `ZoneConfig`, `ZoneState`,
   `RMSComparator`, `FreezeMonitor`, and `stateKind` (traffic-light state vs the threshold).
-- **Adapters**: `ScreenCapturer` (capture.ts), `WebAudioSound` (sound.ts),
-  `TelegramNotifier` / `TelegramPoller` (telegram.ts), `DiskPreferencesStore` (prefs.ts),
-  and nut.js injection living in `main.js` (driven over the `run-injection` IPC).
+- **Adapters**: `ScreenCapturer` (capture.ts) — an N-stream compositor, one `<video>` per
+  monitor, that answers `grabRegion(bbox)` over the union of every display's bounds —
+  `WebAudioSound` (sound.ts), `TelegramNotifier` / `TelegramPoller` (telegram.ts),
+  `DiskPreferencesStore` (prefs.ts), and nut.js injection living in `main.js` (driven over
+  the `run-injection` IPC).
 - **Composition root**: `src/capture-spike.ts` wires the adapters, owns the zones table +
   settings UI, and drives the overlay via `main.js`. `main.js` owns the window, tray,
   hotkeys, OS input, and the config/preferences files.
+- **Multi-monitor**: every `Bbox` lives in virtual-desktop DIP coordinates — the union of
+  `screen.getAllDisplays().bounds`. `planDraws`/`drawnArea`/`unionBounds`/`bboxCenter`
+  (capture.ts) are the pure math behind the compositor and nut.js click targeting; a
+  single-monitor setup is just the degenerate case (union == the one display).
 
 ## Configuration & secrets
 
@@ -109,6 +119,28 @@ SOLID. A pure domain with adapters injected by the renderer composition root:
 - **Telegram uses long-polling**, tracks an `offset`, and skips the backlog on start.
 - **macOS permissions**: Screen Recording (for `getDisplayMedia`) and Accessibility (for
   nut.js). The first capture/injection prompts for them.
+- **One portal pick per monitor per app session.** The `xdg-desktop-portal` (Wayland/GNOME)
+  grants exactly one monitor per `getDisplayMedia()` call and never reports which one —
+  `ensureCapture` acquires one stream per display in left-to-right order, prompting with a
+  `window.confirm` (position + resolution, never `label` — it's an empty string on this
+  rig) only when `get-displays`' `needsPicker` says the portal didn't disclose which source
+  matches which display. Cancelling a prompt degrades gracefully: already-captured displays
+  keep working, zones on the rest read `—` (never a false "Frozen"); the `Screens` button
+  (capture.html) drops every live stream and re-acquires as the escape hatch for a
+  wrong-order pick.
+- **DIP vs physical px.** `ScreenCapturer` scales each display's video pixels to its DIP
+  bounds (`videoWidth / bounds.width`), so HiDPI just works from the live stream — except
+  nut.js injection, which assumes `scaleFactor === 1` (true on this rig); an X11 setup with
+  OS-level scaling would need physical-px conversion in `doInjection` (see the comment
+  above `mouse.setPosition` in `main.js`).
+- **The overlay window spans whatever frame it's given** (`frameX/frameY/frameW/frameH` in
+  the `open-overlay` params, falling back to the primary display's bounds) — on this rig
+  that's the full 2-monitor virtual desktop under XWayland, not just one screen.
+- **Pre-existing `settings.json` zones migrate coordinate-space-only, no schema change.**
+  Zones selected on the primary/leftmost monitor keep identical bboxes; zones selected via
+  the old single-monitor portal pick on a secondary display are off by that display's
+  offset (e.g. +1920 on this rig) and need re-selecting. An out-of-union restored bbox
+  throws in `grabRegion` (shows `—`), it does not crash.
 
 ## Constants
 
@@ -133,3 +165,7 @@ in sync by hand, but the `.deb` always takes `VERSION`. Bump by editing `VERSION
 - All UI text is in English. Light theme, pink/red accent (`#f5365c`).
 - No comments by default — clean code (clear names, small functions) explains the WHAT.
   Reserve comments for the non-obvious WHY. Don't restate what the code already says.
+- **Documentation lives in a file-header comment only, never on functions.** When a module
+  deserves documentation, put one comment block at the top of the file describing its role
+  and contract; do not add docstrings above (or inside) functions. Same bar as comments:
+  the non-obvious WHY or contract, not a restatement of what the code says.

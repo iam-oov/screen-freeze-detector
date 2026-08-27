@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("spike", {
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (data) => ipcRenderer.invoke("save-settings", data),
   getVersion: () => ipcRenderer.invoke("get-version"),
+  getDisplays: () => ipcRenderer.invoke("get-displays"),
+  nextCaptureDisplay: (id) => ipcRenderer.invoke("next-capture-display", id),
   // Opens the fullscreen overlay; resolves with the result:
   //   select  -> { zones: Bbox[] } | null
   //   show    -> null

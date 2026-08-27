@@ -1,8 +1,8 @@
 // Renderer for the screensound app (capture.html). Runs the real FreezeMonitor
 // over screen captures, drives the light-theme UI (header toggle, detection
 // settings, Telegram, watched-zones table), and selects zones via a fullscreen
-// overlay window (main process). The inline preview is gone; a hidden <video>
-// still feeds the ScreenCapturer.
+// overlay window (main process). Zones live in virtual-desktop DIP coordinates;
+// ScreenCapturer holds one hidden <video> per monitor, created on demand.
 import {
   FreezeMonitor,
   RMSComparator,
@@ -12,7 +12,16 @@ import {
   type Bbox,
   type PixelFrame,
 } from './domain.ts';
-import { ScreenCapturer, startCapture, bboxCenterToScreen } from './capture.ts';
+import {
+  ScreenCapturer,
+  captureDisplay,
+  bboxCenter,
+  unionBounds,
+  isDisplayCovered,
+  looksLikeWholeDesktop,
+  twoDisplayDirection,
+  type DisplayInfo,
+} from './capture.ts';
 import { WebAudioSound } from './sound.ts';
 import {
   TelegramNotifier,
@@ -55,7 +64,6 @@ const $ = (id: string): HTMLElement => {
 };
 
 // --- static refs -----------------------------------------------------------
-const video = $('video') as HTMLVideoElement;
 const verEl = $('ver');
 const toggleBtn = $('toggleBtn') as HTMLButtonElement;
 const runBadge = $('runBadge');
@@ -85,6 +93,7 @@ const zCount = $('zCount');
 const selectBtn = $('selectBtn') as HTMLButtonElement;
 const selectLbl = $('selectLbl');
 const showBtn = $('showBtn') as HTMLButtonElement;
+const screensBtn = $('screensBtn') as HTMLButtonElement;
 const zonesEl = $('zones');
 const footStatus = $('footStatus');
 const lastCheck = $('lastCheck');
@@ -126,7 +135,11 @@ const silentMonitorSound = { play(): void {} };
 let alarmTimer: ReturnType<typeof setInterval> | null = null;
 function anyAlarming(): boolean {
   return zones.some(
-    (z) => z.config.enabled && z.config.soundEnabled && z.state.isFrozen,
+    (z) =>
+      z.config.enabled &&
+      z.config.soundEnabled &&
+      z.state.isFrozen &&
+      !z.state.captureFailed,
   );
 }
 function stopAlarm(): void {
@@ -339,10 +352,85 @@ function frameToDataURL(frame: PixelFrame): string {
   return c.toDataURL('image/png');
 }
 
-async function ensureCapture(): Promise<ScreenCapturer> {
-  if (!capturer) capturer = await startCapture(video);
-  if (capturer.frameWidth === 0) await new Promise((r) => setTimeout(r, 200));
-  return capturer;
+// "Screen 1 of 2: pick the LEFT monitor (1920x1080 at x=0)" — labels are empty
+// strings on Linux/Wayland, so the prompt leans on position + resolution
+// instead, with a directional hint (derived from bounds, not array order —
+// vertically stacked monitors share an x) only when there are exactly two.
+function displayPrompt(d: DisplayInfo, index: number, displays: DisplayInfo[]): string {
+  const total = displays.length;
+  const where =
+    total === 2
+      ? (twoDisplayDirection(d, displays[index === 0 ? 1 : 0]) ?? `#${index + 1}`).toUpperCase()
+      : `#${index + 1}`;
+  return (
+    `Screen ${index + 1} of ${total}: in the system dialog, pick the ${where} monitor ` +
+    `(${d.width}x${d.height} at ${d.x},${d.y}).`
+  );
+}
+
+// Single-flight lock: concurrent callers (double Start/F10, a Telegram poller
+// firing mid-acquisition, Select zones while Start is still acquiring) all
+// await the SAME acquisition instead of racing duplicate portal picks and
+// clobbering main.js's pendingCaptureDisplayId.
+let ensureCaptureInFlight: Promise<ScreenCapturer> | null = null;
+
+// Acquires one live stream per missing display, in left-to-right order — the
+// only stream->display mapping Wayland allows. Interactive callers (Select
+// zones, capture zone, Show, Start/F10) may prompt with a window.confirm and
+// request new streams; non-interactive callers (Telegram-driven actions) only
+// ever use whatever is already live, so an unattended desktop never pops a
+// dialog. Cancelling a confirm OR the portal dialog itself stops acquisition
+// early and leaves the already-captured displays working (zones on the rest
+// show "—", never a false "Frozen").
+async function ensureCapture(interactive = true): Promise<ScreenCapturer> {
+  if (!capturer) capturer = new ScreenCapturer();
+  if (!interactive) return capturer;
+  if (ensureCaptureInFlight) return ensureCaptureInFlight;
+  ensureCaptureInFlight = acquireMissingDisplays().finally(() => {
+    ensureCaptureInFlight = null;
+  });
+  return ensureCaptureInFlight;
+}
+
+async function acquireMissingDisplays(): Promise<ScreenCapturer> {
+  const cap = capturer!;
+  const { displays, needsPicker } = await window.spike.getDisplays();
+  const liveGeoms = () =>
+    cap.screens.map((s) => ({
+      display: s.display,
+      videoWidth: s.video.videoWidth,
+      videoHeight: s.video.videoHeight,
+    }));
+  const union = unionBounds(displays);
+  for (const d of displays as DisplayInfo[]) {
+    // Re-checked every iteration, not just up front: registering a
+    // whole-desktop stream mid-loop can cover a display that was still
+    // missing a moment ago.
+    if (isDisplayCovered(d, liveGeoms())) continue;
+    const index = displays.findIndex((x: DisplayInfo) => x.id === d.id);
+    if (needsPicker && displays.length > 1) {
+      if (!window.confirm(displayPrompt(d, index, displays))) break;
+    }
+    let captured;
+    try {
+      captured = await captureDisplay(d);
+    } catch {
+      break; // portal dialog cancelled (e.g. NotAllowedError) — stop here
+    }
+    const vw = captured.video.videoWidth;
+    const vh = captured.video.videoHeight;
+    if (displays.length > 1 && looksLikeWholeDesktop(vw, vh, union)) {
+      // Some platform handed back the whole desktop for a single pick (e.g.
+      // a Wayland "Entire screen" source) — register it as the union and
+      // stop asking for the rest.
+      cap.stopAll();
+      cap.attach({ display: { ...d, ...union }, video: captured.video });
+      break;
+    }
+    cap.attach(captured);
+  }
+  if (cap.frameWidth === 0) await new Promise((r) => setTimeout(r, 200));
+  return cap;
 }
 
 // --- zones table -----------------------------------------------------------
@@ -509,13 +597,7 @@ function refreshCounts(): void {
 // --- monitoring loop -------------------------------------------------------
 function zoneScreenPoint(bbox: Bbox): { x: number; y: number } | null {
   if (!capturer || capturer.frameWidth === 0) return null;
-  return bboxCenterToScreen(
-    bbox,
-    capturer.frameWidth,
-    capturer.frameHeight,
-    window.screen.width,
-    window.screen.height,
-  );
+  return bboxCenter(bbox);
 }
 
 function injectInto(bbox: Bbox, text: string): Promise<unknown> {
@@ -563,7 +645,7 @@ async function runZoneAction(
     return;
   }
   try {
-    await ensureCapture();
+    await ensureCapture(false); // Telegram-driven: never prompt an unattended desktop
   } catch (e) {
     tgNote('Capture failed: ' + (e instanceof Error ? e.message : String(e)));
     return;
@@ -643,6 +725,14 @@ function injectAlreadyFrozen(z: Zone): void {
 
 function paintZone(z: Zone): void {
   const s = z.state;
+  if (s.captureFailed) {
+    z.simpct.textContent = '—';
+    z.simpct.style.color = '';
+    z.pill.textContent = '—';
+    z.pill.className = 'pill';
+    z.progEl.textContent = '—';
+    return;
+  }
   const pct = s.similarity * 100;
   const kind = stateKind(s, threshold());
   z.simpct.textContent = `${pct.toFixed(1)}%`;
@@ -726,6 +816,8 @@ let overlayBusy = false; // guards against stacking overlays (e.g. rapid clicks)
 async function withScreenshot<T>(
   use: (shot: {
     dataURL: string;
+    frameX: number;
+    frameY: number;
     frameW: number;
     frameH: number;
   }) => Promise<T>,
@@ -734,13 +826,17 @@ async function withScreenshot<T>(
   overlayBusy = true;
   try {
     const cap = await ensureCapture();
+    if (cap.frameWidth === 0) throw new Error('no live capture yet');
     await window.spike.setWindowVisible(false);
     await new Promise((r) => setTimeout(r, 200));
-    const frame = cap.grabRegion([0, 0, cap.frameWidth, cap.frameHeight]);
+    const b = cap.bounds;
+    const frame = cap.grabRegion([b.x, b.y, b.x + b.width, b.y + b.height]);
     const shot = {
       dataURL: frameToDataURL(frame),
-      frameW: cap.frameWidth,
-      frameH: cap.frameHeight,
+      frameX: b.x,
+      frameY: b.y,
+      frameW: b.width,
+      frameH: b.height,
     };
     return await use(shot);
   } catch (e) {
@@ -771,6 +867,8 @@ function selectZones(): void {
     const res = await window.spike.openOverlay({
       mode: 'select',
       dataURL: shot.dataURL,
+      frameX: shot.frameX,
+      frameY: shot.frameY,
       frameW: shot.frameW,
       frameH: shot.frameH,
       zones: zones.map((z) => z.config.bbox),
@@ -792,6 +890,8 @@ function openCaptureZone(z: Zone, onSet: () => void): void {
     const res = await window.spike.openOverlay({
       mode: 'capture',
       dataURL: shot.dataURL,
+      frameX: shot.frameX,
+      frameY: shot.frameY,
       frameW: shot.frameW,
       frameH: shot.frameH,
       detection: z.config.bbox,
@@ -811,12 +911,27 @@ showBtn.addEventListener('click', () => {
     await window.spike.openOverlay({
       mode: 'show',
       dataURL: shot.dataURL,
+      frameX: shot.frameX,
+      frameY: shot.frameY,
       frameW: shot.frameW,
       frameH: shot.frameH,
       zones: zones.map((z) => z.config.bbox),
       names: zones.map((z) => z.config.name),
       captures: zones.map((z) => z.config.photoBbox),
     });
+  });
+});
+
+// Escape hatch when the portal-pick order doesn't match the physical layout
+// (undetectable in software with same-resolution monitors): drop every live
+// stream and re-run acquisition, prompting again in the same left-to-right order.
+screensBtn.addEventListener('click', () => {
+  if (!capturer) return;
+  capturer.stopAll();
+  zones.forEach((z) => z.state.reset()); // stale prevImage/frozenCount would false-freeze
+  void ensureCapture().catch((e) => {
+    footStatus.textContent =
+      'Capture failed: ' + (e instanceof Error ? e.message : String(e));
   });
 });
 
@@ -858,10 +973,9 @@ async function sendZoneState(code: string): Promise<void> {
     tgNote(`Unknown zone: ${code}`);
     return;
   }
-  // Establish capture on demand so remote queries work without monitoring
-  // running (getDisplayMedia is auto-granted via setDisplayMediaRequestHandler).
+  // Uses whatever is already live — Telegram-driven, so never prompts.
   try {
-    await ensureCapture();
+    await ensureCapture(false);
   } catch (e) {
     tgNote('Capture failed: ' + (e instanceof Error ? e.message : String(e)));
     return;

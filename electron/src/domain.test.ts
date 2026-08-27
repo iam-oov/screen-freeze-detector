@@ -215,6 +215,52 @@ test("freeze_monitor respects per-zone sound toggle", () => {
   assert.deepEqual(notifier.sent, ["Zone 1"]);
 });
 
+class FlakyCapturer {
+  fail = false;
+  grabRegion(_bbox: Bbox): PixelFrame {
+    if (this.fail) throw new Error("no live stream for this bbox");
+    return solid(4, 4, 0, 0, 0);
+  }
+}
+
+test("freeze_monitor: grabRegion throw sets captureFailed and leaves isFrozen untouched", () => {
+  const sound = new FakeSound();
+  const inj = new FakeInjector();
+  const notifier = new FakeNotifier();
+  const capturer = new FlakyCapturer();
+  const monitor = new FreezeMonitor(capturer, new AlwaysFrozenComparator(), sound, inj, notifier);
+  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1", true, true, true)];
+  const states = [new ZoneState()];
+
+  run(monitor, zones, states, 4, 2); // freezes on tick 3 (edge), stays frozen tick 4
+  assert.equal(states[0].isFrozen, true);
+  assert.equal(states[0].captureFailed, false);
+
+  capturer.fail = true;
+  monitor.checkZones(zones, states, 0.9, 2);
+  assert.equal(states[0].captureFailed, true);
+  assert.equal(states[0].isFrozen, true); // stays frozen, not silently cleared
+  assert.equal(sound.plays, 2); // no extra beep on the failed tick
+});
+
+test("freeze_monitor: captureFailed clears on the next successful grab", () => {
+  const sound = new FakeSound();
+  const inj = new FakeInjector();
+  const notifier = new FakeNotifier();
+  const capturer = new FlakyCapturer();
+  const monitor = new FreezeMonitor(capturer, new AlwaysFrozenComparator(), sound, inj, notifier);
+  const zones = [new ZoneConfig([0, 0, 10, 10], "Zone 1")];
+  const states = [new ZoneState()];
+
+  capturer.fail = true;
+  monitor.checkZones(zones, states, 0.9, 2);
+  assert.equal(states[0].captureFailed, true);
+
+  capturer.fail = false;
+  monitor.checkZones(zones, states, 0.9, 2);
+  assert.equal(states[0].captureFailed, false);
+});
+
 test("freeze_monitor skips disabled zone", () => {
   const sound = new FakeSound();
   const inj = new FakeInjector();

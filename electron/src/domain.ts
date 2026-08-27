@@ -50,6 +50,11 @@ export class ZoneState {
   similarity = 0;
   frozenCount = 0;
   isFrozen = false;
+  // Set when the last grabRegion for this zone threw (e.g. its display went
+  // away mid-session); cleared on the next successful grab. isFrozen is left
+  // untouched, so a zone that died while frozen doesn't silently un-freeze —
+  // renderers should treat captureFailed as an overriding "—" presentation.
+  captureFailed = false;
 
   update(similarity: number, threshold: number, consecRequired: number): void {
     this.similarity = similarity;
@@ -66,6 +71,7 @@ export class ZoneState {
     this.similarity = 0;
     this.frozenCount = 0;
     this.isFrozen = false;
+    this.captureFailed = false;
   }
 }
 
@@ -168,9 +174,11 @@ export class FreezeMonitor {
       try {
         newImg = this.capturer.grabRegion(zone.bbox);
       } catch {
+        state.captureFailed = true;
         results.push([i, null]);
         continue;
       }
+      state.captureFailed = false;
 
       if (state.prevImage !== null) {
         const similarity = this.comparator.computeSimilarity(state.prevImage, newImg);

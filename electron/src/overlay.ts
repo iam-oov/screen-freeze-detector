@@ -21,13 +21,22 @@ const bar = $("bar");
 
 type CssRect = { left: number; top: number; width: number; height: number };
 type Tag = number | "new" | "capture"; // existing-zone index | newly drawn | the capture rect
-type EditRect = { el: HTMLElement; tag: Tag; css: CssRect };
+// dirty: has the user touched this rect (draw/move/resize)? Untouched
+// pre-existing rects return their ORIGINAL bbox verbatim on confirm, instead
+// of round-tripping through toBbox — which clamps into the LIVE frame and
+// would silently destroy a zone sitting on a display that isn't captured
+// right now (portal pick cancelled, monitor asleep, etc).
+type EditRect = { el: HTMLElement; tag: Tag; css: CssRect; dirty: boolean };
 
 let mode = "select";
+let frameX = 0;
+let frameY = 0;
 let frameW = 0;
 let frameH = 0;
 let existingCount = 0; // number of pre-existing zones loaded (select mode)
 let zoneNames: string[] = []; // real codes of pre-existing zones (by index)
+let originalZones: Bbox[] = []; // as loaded, before any edit — the C1 fallback
+let originalCapture: Bbox | null = null; // ditto, for capture mode's single rect
 const edits: EditRect[] = []; // editable rects (with resize handles)
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -41,6 +50,8 @@ window.spike.onOverlayInit(
   (data: {
     mode: string;
     dataURL: string;
+    frameX?: number;
+    frameY?: number;
     frameW: number;
     frameH: number;
     zones?: Bbox[];
@@ -50,6 +61,8 @@ window.spike.onOverlayInit(
     current?: Bbox | null;
   }) => {
     mode = data.mode;
+    frameX = data.frameX ?? 0;
+    frameY = data.frameY ?? 0;
     frameW = data.frameW;
     frameH = data.frameH;
     zoneNames = data.names ?? [];
@@ -57,9 +70,11 @@ window.spike.onOverlayInit(
     bar.innerHTML = INSTR[mode] ?? INSTR.select;
     if (mode === "select" && Array.isArray(data.zones)) {
       existingCount = data.zones.length;
+      originalZones = data.zones;
       data.zones.forEach((b, i) => edits.push(makeRect(bboxToCss(b), i)));
       renumber();
     } else if (mode === "capture") {
+      originalCapture = data.current ?? null;
       if (data.detection) drawStatic(bboxToCss(data.detection), "detection", "ref");
       if (data.current) edits.push(makeRect(bboxToCss(data.current), "capture"));
     } else if (mode === "show" && Array.isArray(data.zones)) {
@@ -83,12 +98,17 @@ function bboxToCss(b: Bbox): CssRect {
   const d = disp();
   const sx = d.w / frameW;
   const sy = d.h / frameH;
-  return { left: b[0] * sx, top: b[1] * sy, width: (b[2] - b[0]) * sx, height: (b[3] - b[1]) * sy };
+  return {
+    left: (b[0] - frameX) * sx,
+    top: (b[1] - frameY) * sy,
+    width: (b[2] - b[0]) * sx,
+    height: (b[3] - b[1]) * sy,
+  };
 }
 
 function toBbox(c: CssRect): Bbox {
   const d = disp();
-  return cssRectToBbox(c, frameW, frameH, d.w, d.h);
+  return cssRectToBbox(c, frameW, frameH, d.w, d.h, frameX, frameY);
 }
 
 // A non-interactive rect: "" = green detection, "cap" = blue capture (show mode),
@@ -115,7 +135,7 @@ function makeRect(c: CssRect, tag: Tag): EditRect {
   tagEl.className = "tag";
   el.appendChild(tagEl);
   document.body.appendChild(el);
-  const r: EditRect = { el, tag, css: c };
+  const r: EditRect = { el, tag, css: c, dirty: false };
   layout(r);
   return r;
 }
@@ -223,6 +243,7 @@ document.addEventListener("pointerdown", (e) => {
   // Empty space: draw a new rect. Capture mode keeps a single rect, so replace it.
   if (mode === "capture") clearEdits();
   edits.push(makeRect({ left: p.x, top: p.y, width: 0, height: 0 }, mode === "capture" ? "capture" : "new"));
+  edits[edits.length - 1].dirty = true; // freshly drawn — no original to fall back to
   renumber();
   startAction("draw", edits.length - 1, p);
 });
@@ -231,6 +252,7 @@ document.addEventListener("pointermove", (e) => {
   if (action === "none" || activeIdx < 0) return;
   const p = pt(e as PointerEvent);
   const r = edits[activeIdx];
+  r.dirty = true;
   if (action === "draw") {
     r.css = {
       left: Math.min(startX, p.x),
@@ -281,13 +303,14 @@ document.addEventListener("keydown", (e) => {
       const existing: Bbox[] = [];
       for (let i = 0; i < existingCount; i++) {
         const r = edits.find((x) => x.tag === i);
-        if (r) existing[i] = toBbox(r.css);
+        if (r) existing[i] = r.dirty ? toBbox(r.css) : originalZones[i];
       }
       const added = edits.filter((x) => x.tag === "new").map((x) => toBbox(x.css));
       window.spike.overlayDone({ existing, added });
     } else if (mode === "capture") {
       const r = edits.find((x) => x.tag === "capture");
-      window.spike.overlayDone(r ? { bbox: toBbox(r.css) } : null);
+      const bbox = r ? (r.dirty ? toBbox(r.css) : originalCapture) : null;
+      window.spike.overlayDone(bbox ? { bbox } : null);
     } else {
       window.spike.overlayDone(null);
     }
